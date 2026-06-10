@@ -1,0 +1,16 @@
+[
+  {
+    "telegram_id": 6320213595,
+    "first_name": "Elisheva",
+    "username": null,
+    "registered_at": "2026-05-28T23:33:21.862693",
+    "role": "passenger",
+    "age": 35,
+    "gender": "female",
+    "address": "מודיעין עילית",
+    "phone": "0509544123",
+    "default_role": "passenger",
+    "is_registered": true,
+    "updated_at": "2026-06-05T09:20:27.386886"
+  }
+]
