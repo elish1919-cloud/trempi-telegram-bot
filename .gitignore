@@ -14,8 +14,9 @@ venv/
 .venv/
 env/
 
-# Local runtime data / caches
+# Local runtime data / caches (contains real user PII - never commit)
 geocache.json
+users.json
 
 # OS / editor
 .DS_Store
