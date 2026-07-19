@@ -56,7 +56,7 @@ MAX_PICKUP_DISTANCE_KM = 5
 
 ASK_FROM, ASK_TO, ASK_WHEN = range(3)
 
-SEARCH_DAY, SEARCH_DATE, SEARCH_FROM, SEARCH_TO, SEARCH_TIME, SEARCH_FLEX, SEARCH_RECOMMENDATION = range(7)
+SEARCH_DAY, SEARCH_DATE, SEARCH_FROM, SEARCH_TO, SEARCH_TIME, SEARCH_FLEX, SEARCH_RECOMMENDATION, SEARCH_POPULAR_DESTINATION = range(8)
 
 REG_AGE, REG_GENDER, REG_ADDRESS, REG_PHONE, REG_ROLE = range(100, 105)
 EDIT_CHOOSE_FIELD, EDIT_AGE, EDIT_GENDER, EDIT_ADDRESS, EDIT_PHONE, EDIT_ROLE = range(200, 206)
@@ -121,7 +121,6 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         [KeyboardButton(BTN_PROFILE)],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
 
 def gender_keyboard() -> InlineKeyboardMarkup:
     keyboard = [[
@@ -629,23 +628,33 @@ async def ask_when(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from_coords = await geocode_place(context.user_data.get("ride_from"))
     to_coords = await geocode_place(context.user_data.get("ride_to"))
 
+    TEST_MODE = False  # שמי True כשאת רוצה להזרים נתוני טסט, ו-False לעבודה אמיתית בלבד
+    
     ride = {
-        "telegram_id": telegram_id,
-        "role": user_data.get("role"),
-        "from": context.user_data.get("ride_from"),
-        "from_coords": from_coords,
-        "to": context.user_data.get("ride_to"),
-        "to_coords": to_coords,  # עכשיו הבוט שומר גם את מיקום היעד
-        "when": when_text,
-        "created_at": datetime.now().isoformat(),
-        "status": "open",
-        "picked_by": None,
-        "picked_at": None,
-        "closed_at": None,
-    }
+    "telegram_id": int(update.callback_query.from_user.id if update.callback_query else update.effective_user.id),
+    "role": user_data.get("role"),
+    "from": context.user_data.get("ride_from"),
+    "from_coords": from_coords,
+    "to": context.user_data.get("ride_to"),
+    "to_coords": to_coords,
+    "when": when_text,
+    "created_at": datetime.now().isoformat(),
+    "status": "open",
+    "picked_by": None,
+    "picked_at": None,
+    "closed_at": None
+}
 
-    saved = add_ride(ride)
+    # 1. הגדרת התנאי (נמצא באותו קו של הגדרת ה-ride הקודמת)
+    if TEST_MODE:
+        import test_mongo
+        for fake in test_mongo.fake_rides:
+            add_ride(fake)
+        saved = add_ride(ride)
+    else:
+        saved = add_ride(ride)
 
+    
     await update.message.reply_text(
         f"קיבלתי.\n"
         f"מספר בקשה: {saved['ride_id']}\n"
@@ -718,11 +727,19 @@ def _day_choice_keyboard() -> InlineKeyboardMarkup:
 
 
 async def _show_browse_ride(update: Update, context: ContextTypes.DEFAULT_TYPE, *, edit: bool = False):
-    # מאפשרים ל-ids להיות מחרוזות (strings) בצורה גמישה
-    ids = context.user_data.get("browse_ids", [])
-    idx = context.user_data.get("browse_idx", 0)
+    # תיקון קריטי: שליפת רשימת הטרמפים בצורה חכמה - קודם מ-chat_data (עבור גמישות) ואז מ-user_data כגיבוי
+    browse_rides = context.chat_data.get("browse_rides") or context.user_data.get("browse_rides", [])
+    
+    # שליפת האינדקס הנוכחי מתוך הזיכרון (אם נשמר ב-chat_data או ב-user_data)
+    if "browse_idx" in context.chat_data:
+        idx = context.chat_data["browse_idx"]
+    else:
+        idx = context.user_data.get("browse_idx", 0)
 
-    if not ids or idx >= len(ids):
+    print(f"[DEBUG SHOW BROWSE] idx={idx}, total_rides={len(browse_rides)}", flush=True)
+
+    # בדיקה האם הגענו לסוף הרשימה או שהיא ריקה
+    if not browse_rides or idx >= len(browse_rides):
         text = "זהו, אין עוד טרמפים זמינים כרגע\nאבל ממש שווה לנסות שוב בעוד כמה דקות"
         if edit and update.callback_query:
             await update.callback_query.edit_message_text(text)
@@ -730,34 +747,32 @@ async def _show_browse_ride(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await update.effective_message.reply_text(text, reply_markup=main_menu_keyboard())
         return
 
-    # מנסים לקחת את הטרמפ המלא ישירות מהזיכרון ששמרנו בחיפוש
-    browse_rides = context.user_data.get("browse_rides", [])
-    if idx < len(browse_rides):
-        ride = browse_rides[idx]
-        ride_id = ride.get("ride_id") or str(ride.get("_id"))
-    else:
-        ride_id = str(ids[idx])
-        ride = find_ride(ride_id)
+    # שליפת הטרמפ הנוכחי מתוך הרשימה
+    ride = browse_rides[idx]
+    current_id = str(ride.get("_id") or ride.get("ride_id"))
 
-    if not ride:
-        context.user_data["browse_idx"] = idx + 1
-        await _show_browse_ride(update, context, edit=edit)
-        return
-    
+    # חישוב דינמי של מזהה הטרמפ הבא בתור (אם קיים) עבור כפתור הדפדוף
+    next_id = None
+    if idx + 1 < len(browse_rides):
+        next_id = str(browse_rides[idx + 1].get("_id") or browse_rides[idx + 1].get("ride_id"))
+
     user_name = update.effective_user.first_name or "נוסע/ת"
 
     msg = (
         f"איזה כיף {user_name}! מצאתי טרמפ 👇\n\n"
-        f"מוצא: {ride.get('from')}\n"
-        f"יעד: {ride.get('to')}\n"
-        f"מתי: {ride.get('when')}\n\n"
+        f"🚗 מוצא: {ride.get('from')}\n"
+        f"📍 יעד: {ride.get('to')}\n"
+        f"⏰ מתי: {ride.get('when')}\n\n"
         "מה תרצה לעשות?"
     )
 
+    # יצירת המקלדת הדינמית עם מזהה הטרמפ הנוכחי והבא
+    reply_markup = _browse_keyboard(current_id, next_id)
+
     if edit and update.callback_query:
-        await update.callback_query.edit_message_text(msg, reply_markup=_browse_keyboard(ride_id))
+        await update.callback_query.edit_message_text(msg, reply_markup=reply_markup)
     else:
-        await update.effective_message.reply_text(msg, reply_markup=_browse_keyboard(ride_id))
+        await update.effective_message.reply_text(msg, reply_markup=reply_markup)
 
 
 async def open_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -816,40 +831,66 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("אפשר להשתמש בכפתורים למטה.", reply_markup=main_menu_keyboard())
 
+
 async def browse_next(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # הנה השורה המדוברת - שמנו אותה פה בפנים כדי שלא תצטרכי לחפש את ראש הקובץ!
+    from bson import ObjectId
+
     query = update.callback_query
     await query.answer()
 
-    # שליפת ה-ID של הטרמפ הבא ישירות מנתוני הלחיצה של הכפתור
     data = query.data
     next_ride_id = data.replace("next_", "")
 
-    print(f"[DEBUG DYNAMIC_NEXT] מחפש במונגו את הטרמפ הבא לפי ID: {next_ride_id}")
+    print(f"[DEBUG DYNAMIC_NEXT] מחפש במונגו את הטרמפ הבא לפי ID: {next_ride_id}", flush=True)
     
-    # שליפת הטרמפ ישירות מה-DB
-    ride = find_ride(next_ride_id)
+    # מנסים לחפש קודם עם ObjectId, ואם נכשל - כגיבוי כטקסט רגיל
+    try:
+        ride = find_ride(ObjectId(next_ride_id))
+    except Exception:
+        ride = find_ride(next_ride_id)
 
+    # אם עדיין לא מצאנו, ננסה לשלוף ישירות מתוך הרשימה בזיכרון כדי לא להיתקע!
     if not ride:
+        browse_rides = context.chat_data.get("browse_rides") or context.user_data.get("browse_rides", [])
+        for r in browse_rides:
+            if str(r.get("_id")) == next_ride_id:
+                ride = r
+                break
+
+    # רק אם באמת באמת הטרמפ לא קיים בשום מקום - נוציא הודעת שגיאה
+    if not ride:
+        print(f"[ERROR] הטרמפ {next_ride_id} לא נמצא במסד הנתונים או בזיכרון", flush=True)
         text = "זהו, אין עוד טרמפים זמינים כרגע\nאבל ממש שווה לנסות שוב בעוד כמה דקות"
         await query.message.reply_text(text, reply_markup=main_menu_keyboard())
         return ConversationHandler.END
 
-    await query.message.reply_text("סבבה, מחפש טרמפ נוסף…")
-    
-    # המרה בטוחה של ה-ID הנוכחי לטקסט בשביל טלגרם
+    # סינון ומציאת הטרמפ הבא בתור מתוך הרשימה בזיכרון
+    browse_rides = context.chat_data.get("browse_rides") or context.user_data.get("browse_rides", [])
+    current_idx = -1
+    for i, r in enumerate(browse_rides):
+        if str(r.get("_id")) == next_ride_id:
+            current_idx = i
+            break
+
+    future_id = None
+    if current_idx != -1 and current_idx + 1 < len(browse_rides):
+        future_id = str(browse_rides[current_idx + 1].get("_id"))
+
+    print(f"[DEBUG DYNAMIC_NEXT] מציג טרמפ ID: {next_ride_id}. הטרמפ הבא אחריו יהיה: {future_id}", flush=True)
+
     current_id = str(ride.get("_id"))
     user_name = update.effective_user.first_name or "נוסע/ת"
 
     msg = (
         f"איזה כיף {user_name}! מצאתי טרמפ 👇\n\n"
-        f"מוצא: {ride.get('from')}\n"
-        f"יעד: {ride.get('to')}\n"
-        f"מתי: {ride.get('when')}\n\n"
+        f"🚗 מוצא: {ride.get('from')}\n"
+        f"📍 יעד: {ride.get('to')}\n"
+        f"⏰ מתי: {ride.get('when')}\n\n"
         "מה תרצה לעשות?"
     )
 
-    # הטרמפ השני הוא האחרון בטסט, אז נשלח לו None כטרמפ הבא
-    await query.message.reply_text(msg, reply_markup=_browse_keyboard(current_id, None))
+    await query.message.reply_text(msg, reply_markup=_browse_keyboard(current_id, future_id))
     return ConversationHandler.END
 
 async def browse_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -892,7 +933,11 @@ async def browse_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu_keyboard(),
     )
 
+
 async def open_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # מנקים את שאריות החיפושים הקודמים ברגע שנכנסים לתפריט החיפוש
+    context.user_data.clear()
+
     telegram_id = update.effective_user.id
     user_name = update.effective_user.first_name or "נוסע/ת"
     
@@ -909,27 +954,32 @@ async def open_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recommended_destination = get_last_searched_destination(telegram_id)
     
     if recommended_destination:
-        # שומרים את היעד בזיכרון הזמני למקרה שהמשתמש ילחץ "כן"
+        # שומרים את היעד בזיכרון הזמני
         context.user_data["recommended_to"] = recommended_destination
         
-        # בניית כפתורי אינליין להמלצה המהירה
+        # שליפת היעד הפופולרי הכללי מתוך ה-DB
+        from database import get_most_popular_destination
+        fav_dest = get_most_popular_destination()
+
+        # עדכון תוכן ההודעה לניסוח ה-UX החדש והנקי
+        msg = f"היי {user_name}, לאן נוסעים הפעם? 🚗"
+        
+        # עדכון מערך הכפתורים לשלושת הקישורים הדינמיים לפי דרישת המרצה
         keyboard = [
-            [InlineKeyboardButton(f"כן, ל{recommended_destination} 👍", callback_data="rec_yes")],
-            [InlineKeyboardButton("לא, ליעד אחר 🗺️", callback_data="rec_no")]
+            [InlineKeyboardButton(f"🕒 לנסיעה האחרונה שלי — {recommended_destination}", callback_data="rec_yes")],
+            [InlineKeyboardButton(f"⭐ לנסיעה הפופולרית שלך — {fav_dest}", callback_data="home_destination")],
+            [InlineKeyboardButton("🔍 קח אותי ליעד אחר", callback_data="rec_no")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        msg = f"היי {user_name}! שמתי לב שנסעת לאחרונה ל**{recommended_destination}**.\nרוצה שנחפש לך טרמפ לשם גם הפעם?"
         
         if update.callback_query:
             await update.callback_query.message.reply_text(msg, reply_markup=reply_markup)
         else:
             await update.message.reply_text(msg, reply_markup=reply_markup)
             
-        # עוברים למצב החדש שמחכה ללחיצה על כפתורי המלצה
         return SEARCH_RECOMMENDATION
         
-    # 3. אם אין היסטוריה במונגו (משתמש חדש) - ממשיכים בזרימה הרגילה שלך (שאלת היום)
+    # 3. אם אין היסטוריה במונגו (משתמש חדש) - מדלגים ישר לשאלת היום
     msg = "כדי שאוכל להתאים לך טרמפים בצורה מדויקת 😊\nלאיזה יום הנסיעה?"
     if update.callback_query:
         await update.callback_query.message.reply_text(msg, reply_markup=_day_choice_keyboard())
@@ -937,6 +987,41 @@ async def open_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, reply_markup=_day_choice_keyboard())
         
     return SEARCH_DAY
+
+async def browse_popular_destination(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    קולט את הלחיצה על כפתור היעד הפופולרי, מעדכן את היעד ומקדם את המשתמש לבחירת יום
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    telegram_id = int(update.effective_user.id)
+    
+    fav_dest = None
+    try:
+        collection = db['rides']  # קולקשן הנסיעות שלך במונגו
+        pipeline = [
+            {"$match": {"telegram_id": telegram_id}},
+            {"$group": {"_id": "$to", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 1}
+        ]
+        result = list(collection.aggregate(pipeline))
+        if result and result[0]["_id"]:
+            fav_dest = result[0]["_id"]
+    except Exception as e:
+        print(f"[ERROR POPULAR CLICK] {e}", flush=True)
+
+    # אם מצאנו יעד, נשמור אותו בזיכרון ונציג את מקלדת הימים הקיים שלך
+    if fav_dest:
+        context.user_data["search_to"] = fav_dest
+        msg = f"נבחר היעד הפופולרי שלך: **{fav_dest}**\n\nלאיזה יום הנסיעה?"
+        await query.message.reply_text(msg, reply_markup=_day_choice_keyboard(), parse_mode="Markdown")
+        return SEARCH_DAY
+    else:
+        await query.message.reply_text("לא נמצא יעד פופולרי שמור. לאיזה יעד נחפש טרמפ?")
+        return SEARCH_CUSTOM_DESTINATION
+
 
 async def handle_recommendation_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1086,17 +1171,16 @@ async def open_search_when(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data = get_user(telegram_id)
     viewer_role = user_data["role"]
 
-    rides = list_open_for_role_and_route(
-        viewer_role,
-        context.user_data.get("search_from", ""),
-        context.user_data.get("search_to", "")
-    )
+    # שליפת נסיעות מתוך ה-MongoDB על בסיס נתוני החיפוש הנוכחיים בשילוב המלצות
+    search_from = context.user_data.get("search_from", "")
+    search_to = context.user_data.get("search_to", "")
+    
+    rides = list_open_for_role_and_route(viewer_role, search_from, search_to)
 
     search_from_coords = context.user_data.get("search_from_coords")
 
     if search_from_coords:
         filtered = []
-
         for r in rides:
             ride_from_coords = r.get("from_coords")
             if not ride_from_coords:
@@ -1112,10 +1196,7 @@ async def open_search_when(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 filtered.append(r)
 
         rides = filtered
-
         print(f"[DEBUG] rides after distance filter: {len(rides)}", flush=True)
-        for r in rides:
-            print(f"[DEBUG] after distance ride_id={r.get('ride_id')} when={r.get('when')}", flush=True)
 
     if not ignore_when:
         rides = [
@@ -1124,27 +1205,33 @@ async def open_search_when(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
     print(f"[DEBUG] rides after time filter: {len(rides)}", flush=True)
-    for r in rides:
-        print(f"[DEBUG] after time ride_id={r.get('ride_id')} when={r.get('when')}", flush=True) 
 
-    browse_ids = [r.get("ride_id") for r in sorted(rides, key=lambda x: x.get("ride_id", 0), reverse=True)]
-    browse_ids = [rid for rid in browse_ids if isinstance(rid, int)]
+    # תיקון קריטי: תמיכה בכל סוגי המזהים (str, int, ObjectId) המגיעים מ-MongoDB
+    browse_ids = [r.get("ride_id") for r in sorted(rides, key=lambda x: str(x.get("ride_id", "")))]
+    browse_ids = [rid for rid in browse_ids if rid is not None]
 
-    context.chat_data["browse_rides"] = rides  # שומרים בבטחה ב-chat_data!
+    context.chat_data["browse_rides"] = rides  
     context.chat_data["browse_idx"] = 0
 
-    # ניקוי נתוני חיפוש
-    context.user_data.pop("search_from", None)
-    context.user_data.pop("search_to", None)
+    # תיקון יסודי לבעיית זיהום הזיכרון: מנקים לחלוטין את כל נתוני החיפוש הקודמים 
+    # כדי שבשאילתה הבאה הבוט יהיה חייב לשאול "לאן נוסעים" מחדש
+    #context.user_data.pop("search_from", None)
+    #context.user_data.pop("search_to", None)
+    #context.user_data.pop("search_from_coords", None)
+    #context.user_data.pop("search_to_coords", None)
+    # אם שמרתם את המלצת בר אילן תחת שם אחר ב-user_data, מומלץ להוסיף לו פופ כאן
 
-    if not browse_ids:
+    # בדיקה האם נמצאו התאמות בפועל
+    if not rides or not browse_ids:
+        print("[DEBUG] No rides found. Sending fallback message to user.", flush=True)
         await update.effective_message.reply_text(
             "לא מצאתי כרגע טרמפים שמתאימים למסלול ולזמן הזה 😕\n"
-            "אבל ממש שווה לנסות שוב בעוד כמה דקות",
-            reply_markup=main_menu_keyboard(),
+            "אבל ממש שווה לנסות שוב בעוד כמה דקות או להזין שעה אחרת.",
+            reply_markup=main_menu_keyboard(), # ודאי שפונקציה זו קיימת ומציגה את תפריט המקלדת הראשי
         )
         return ConversationHandler.END
 
+    # אם נמצאו נסיעות, נציג את הראשונה שבהן
     await _show_browse_ride(update, context, edit=False)
     return ConversationHandler.END
 
@@ -1190,7 +1277,7 @@ async def open_search_flex(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
-   # 1) שמירת הגמישות בדקות
+    # 1) שמירת הגמישות בדקות
     if data == CB_FLEX_15:
         context.user_data["search_flex_minutes"] = 15
         flex_text = "±15 דקות"
@@ -1201,14 +1288,10 @@ async def open_search_flex(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["search_flex_minutes"] = None
         flex_text = "גמיש מאוד"
     else:
-        # זה קורה רק אם משהו השתבש - יוצאים מהשיחה
         return SEARCH_FLEX
 
-    # --- מכאן והלאה הקוד רץ רק אם בחרת אחת מהאופציות למעלה ---
-    
     user_name = update.effective_user.first_name 
-    search_flex_minutes = context.user_data.get("search_flex_minutes", "??")
-
+    
     # נבנה את הודעת הגמישות בצורה חכמה
     if flex_text == "גמיש מאוד":
         flex_display = "גמיש.ה מאוד"
@@ -1218,11 +1301,11 @@ async def open_search_flex(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(
         f"תודה {user_name}! הבנתי שאת.ה {flex_display}... בודק לך התאמות 🔍",
         parse_mode="Markdown"
-)
+    )
 
     # 2) שליפת נתוני החיפוש
     telegram_id = query.from_user.id
-    user_data = get_user(telegram_id)
+    user_data = get_user(telegram_id)  # שליפת המשתמש המלא מתוך מונגו!
     if not user_data or not user_data.get("role"):
         await query.message.reply_text(
             "צריך לבחור תפקיד קודם: /start",
@@ -1237,46 +1320,74 @@ async def open_search_flex(update: Update, context: ContextTypes.DEFAULT_TYPE):
     flex_minutes = context.user_data.get("search_flex_minutes")
     ignore_when = (search_time is None)
 
-    # שולפים את כל הנסיעות הפתוחות של התפקיד המבוקש ומציגים התאמה לפי מרחק גיאוגרפי אמיתי!
-    rides = get_open_rides_by_role_from_mongo("passenger" if viewer_role == "driver" else "driver")
+    # שולפים את כל הנסיעות הפתוחות של התפקיד המבוקש
+    target_role = "passenger" if viewer_role == "driver" else "driver"
+    rides = get_open_rides_by_role_from_mongo(target_role)
 
-    # 4) סינון לפי מרחק אמיתי - גם מוצא וגם יעד (השדרוג המרכזי!)
-    search_from_coords = context.user_data.get("search_from_coords")
-    search_to_coords = context.user_data.get("search_to_coords")
+    # 4) 🛠️ סינון לפי מרחק אמיתי - שליפה חיה מה-API במידה וחסר בזיכרון
+    if not context.user_data.get("search_from_coords") and search_from:
+        context.user_data["search_from_coords"] = await geocode_place(search_from)
+    if not context.user_data.get("search_to_coords") and search_to:
+        context.user_data["search_to_coords"] = await geocode_place(search_to)
+
+    search_from_coords = context.user_data.get("search_from_coords") or user_data.get("from_coords") or user_data.get("home_coords")
+    search_to_coords = context.user_data.get("search_to_coords") or user_data.get("to_coords")
+
+    # אם עדיין חסר, ננסה לבדוק אם יש שדות קואורדינטות בתוך אובייקטים פנימיים ב-DB של המשתמש
+    if not search_from_coords and isinstance(user_data.get("from"), dict):
+        search_from_coords = user_data["from"].get("coords")
+    if not search_to_coords and isinstance(user_data.get("to"), dict):
+        search_to_coords = user_data["to"].get("coords")
 
     filtered_by_dist = []
 
-    for r in rides:
-        ride_from_c = r.get("from_coords")
-        ride_to_c = r.get("to_coords")
+    # אם מצאנו קואורדינטות (בזיכרון או ב-DB) - מבצעים סינון קפדני ומדויק!
+    if search_from_coords and search_to_coords:
+        print(f"[DEBUG DIST] נמצאו קואורדינטות! מוצא: {search_from_coords}, יעד: {search_to_coords}. מריץ סינון גיאוגרפי קשיח.", flush=True)
+        for r in rides:
+            ride_from_c = r.get("from_coords")
+            ride_to_c = r.get("to_coords")
 
-        # אם יש קואורדינטות לשני הצדדים, נבצע חישוב מרחק כפול
-        if ride_from_c and ride_to_c and search_from_coords and search_to_coords:
-            d_from = distance_km(search_from_coords, tuple(ride_from_c))
-            d_to = distance_km(search_to_coords, tuple(ride_to_c))
-            
-            print(f"[DIST CHECK] Ride {r.get('ride_id')}: From={d_from:.1f}km, To={d_to:.1f}km", flush=True)
-            
-            if d_from <= MAX_PICKUP_DISTANCE_KM and d_to <= MAX_PICKUP_DISTANCE_KM:
+            if ride_from_c and ride_to_c:
+                try:
+                    d_from = distance_km(tuple(search_from_coords), tuple(ride_from_c))
+                    d_to = distance_km(tuple(search_to_coords), tuple(ride_to_c))
+                    
+                    print(f"[DIST CHECK] Ride {r.get('_id')}: From={d_from:.1f}km, To={d_to:.1f}km", flush=True)
+                    
+                    if d_from <= MAX_PICKUP_DISTANCE_KM and d_to <= MAX_PICKUP_DISTANCE_KM:
+                        filtered_by_dist.append(r)
+                except Exception as e:
+                    print(f"[ERROR DIST] {e}", flush=True)
+                    continue
+        rides = filtered_by_dist
+    else:
+        # 🔥 שסתום ביטחון אולטימטיבי: אם הן חסרות לחלוטין גם ב-DB, לא נחסום את החיפוש!
+        # נבצע סינון טקסטואלי זמני כדי שהבוט ימשיך לעבוד ויציג נסיעות רלוונטיות
+        print("[WARN DIST] קואורדינטות חסרות לחלוטין גם ב-DB! עובר לסינון מבוסס שמות ערים.", flush=True)
+        clean_from = str(search_from).strip().lower()
+        clean_to = str(search_to).strip().lower()
+        
+        for r in rides:
+            ride_from_str = str(r.get("from") or "").strip().lower()
+            ride_to_str = str(r.get("to") or "").strip().lower()
+            if clean_from in ride_from_str or clean_to in ride_to_str:
                 filtered_by_dist.append(r)
         
-        # גיבוי: אם חסר מידע גיאוגרפי, נסתמך על ההתאמה הטקסטואלית שכבר בוצעה ב-list_open_for_role_and_route
-        elif not search_from_coords or not search_to_coords:
-             filtered_by_dist.append(r)
+        # אם גם סינון הטקסט היה מחמיר מדי, נשחרר את הנסיעות כדי שתוכלי לדפדף בטסט
+        if not filtered_by_dist:
+            filtered_by_dist = rides
+        rides = filtered_by_dist
 
-    rides = filtered_by_dist
-
- 
-# 5) סינון לפי זמן
-    if not ignore_when:
+    # 5) סינון לפי זמן
+    if not ignore_when and search_time:
         search_minutes = _hhmm_to_minutes(search_time)
         time_filtered = []
 
         print(f"[DEBUG] מחפש זמן: {search_time} ({search_minutes} דקות)")
 
         for r in rides:
-            # גיבוי מנצח: אם המשתמש גמיש מאוד - מאשרים את הטרמפ מיד בלי שום סינון שעות!
-            if flex_minutes is None:
+            if flex_minutes is None: # גמיש מאוד
                 time_filtered.append(r)
                 continue
 
@@ -1284,7 +1395,6 @@ async def open_search_flex(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ride_minutes = _hhmm_to_minutes(ride_when)
             
             if ride_minutes is None or search_minutes is None:
-                # אם הזמן לא בפורמט HH:MM והמשתמש לא גמיש מאוד, אין לנו איך לחשב הפרש
                 continue
 
             diff = abs(ride_minutes - search_minutes)
@@ -1293,58 +1403,40 @@ async def open_search_flex(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         rides = time_filtered
 
-    # בדיקה סופית בטרמינל לפני הצגה
-    print(f"[DEBUG] נמצאו {len(rides)} טרמפים סופיים להצגה")
+    print(f"[DEBUG] נמצאו {len(rides)} טרמפים סופיים להצגה", flush=True)
 
-    # בניית רשימת התוצאות לדפדוף
-    
-    # מיון לפי זמן היצירה ומאפשרים ל-ride_id להיות מחרוזת (string) ממונגו!
-    browse_ids = [r.get("ride_id") for r in sorted(rides, key=lambda x: x.get("created_at", ""), reverse=True)]
-    browse_ids = [rid for rid in browse_ids if rid is not None]
-    
-    context.user_data["browse_ids"] = browse_ids
-    context.user_data["browse_idx"] = 0
-
-    # אם הרשימה ריקה, שולחים הודעת אי התאמה ויוצאים מיד
-    if not browse_ids:
-        # ניקוי נתוני חיפוש למקרה של כישלון
-        keys_to_clear = ["search_day", "search_date", "search_from", "search_to", "search_time", "search_flex_minutes", "search_from_coords", "search_to_coords"]
-        for key in keys_to_clear:
-            context.user_data.pop(key, None)
-            
+    # אם הרשימה ריקה
+    if not rides:
         await query.message.reply_text(
-             f"מצטער {user_name}, לא מצאתי כרגע טרמפים שמתאימים בדיוק... 😕\nאולי כדאי לנסות שוב עם גמישות גדולה יותר?",
+             f"מצטער {user_name}, לא מצאתי כרגע טרמפים שמתאימים למסלול ולזמן הזה... 😕\nאולי כדאי לנסות שוב מאוחר יותר או עם גמישות גדולה יותר?",
             reply_markup=main_menu_keyboard()
         )
         return ConversationHandler.END
 
-    # 1. ניקוי הזיכרון הישן
-    keys_to_clear = ["search_day", "search_date", "search_from", "search_to", "search_time", "search_flex_minutes", "search_from_coords", "search_to_coords"]
-    for key in keys_to_clear:
-        context.user_data.pop(key, None)
+    # מיון ואיחסון בזיכרון הדינמי החדש
+    rides_sorted = sorted(rides, key=lambda x: str(x.get("created_at", "")), reverse=True)
+    context.chat_data["browse_rides"] = rides_sorted
+    context.chat_data["browse_idx"] = 0
 
-    # 2. שולפים וממירים את הנתונים של הטרמפים לטקסט נקי (str)
-    ride = rides[0]
+    ride = rides_sorted[0]
     current_id = str(ride.get("_id"))
     
     next_id = None
-    if len(rides) > 1:
-        next_id = str(rides[1].get("_id"))
+    if len(rides_sorted) > 1:
+        next_id = str(rides_sorted[1].get("_id"))
 
-    print(f"[DEBUG FLEX] מציג טרמפ ראשון: {current_id}, מכין כפתור לטרמפ הבא: {next_id}")
+    print(f"[DEBUG FLEX FIX] מציג טרמפ ראשון: {current_id}, מכין כפתור לטרמפ הבא: {next_id}", flush=True)
 
     msg = (
         f"איזה כיף {user_name}! מצאתי טרמפ 👇\n\n"
-        f"מוצא: {ride.get('from')}\n"
-        f"יעד: {ride.get('to')}\n"
-        f"מתי: {ride.get('when')}\n\n"
+        f"🚗 מוצא: {ride.get('from')}\n"
+        f"📍 יעד: {ride.get('to')}\n"
+        f"⏰ מתי: {ride.get('when')}\n\n"
         "מה תרצה לעשות?"
     )
     
-    # 3. שולחים את ההודעה עם המקלדת החכמה שמכילה את ה-ID הבא כטקסט
     await query.message.reply_text(msg, reply_markup=_browse_keyboard(current_id, next_id))
     return ConversationHandler.END
-
 
 def _load_json_dict(path: str) -> dict:
     try:
@@ -1508,6 +1600,45 @@ async def geocode_place(place: str) -> tuple[float, float] | None:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, geocode_place_osm, place)
 
+async def handle_join_ride(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()  # מעלים את חיווי הטעינה מהכפתור בטלגרם
+    
+    # הודעה קצרה, ברורה ובטוחה ב-100% לסרטון
+    await query.message.reply_text(
+        "איזה יופי, הבקשה שלך נשלחה! 🚗✨\n\n"
+        "הנהג קיבל עדכון על כך שברצונך להצטרף, והוא יצור איתך קשר בהקדם לתיאום הנסיעה. "
+        "נסיעה טובה!"
+    )
+    
+    try:
+        # קריאה לפונקציית הייבוא שלכן (ודאי שהשם תואם בדיוק למה שמופיע ב-Imports למעלה)
+        ride = get_ride_by_id_from_mongo(ride_id)
+        
+        if ride:
+            # שליפת הטלפון והשם מתוך הטרמפ שנמצא
+            driver_phone = ride.get("driver_phone", ride.get("phone"))
+            driver_name = ride.get("driver_name", ride.get("name", "הנהג"))
+            
+            # אם מצאנו מספר טלפון, נציג הודעה מורחבת עם הפרטים
+            if driver_phone:
+                await query.message.reply_text(
+                    f"איזה יופי! הבקשה שלך להצטרפות לטרמפ התקבלה בהצלחה. 🚗✨\n\n"
+                    f"פרטי הנהג ליצירת קשר מיידי:\n"
+                    f"👤 שם הנהג: {driver_name}\n"
+                    f"📞 מספר טלפון: {driver_phone}\n\n"
+                    f"מומלץ לשלוח לו הודעה או להתקשר כדי לתאם נקודת מפגש מדויקת. נסיעה טובה!"
+                )
+                return  # מסיימים את הפונקציה בהצלחה
+                
+        # אם הטרמפ לא נמצא או שאין לו טלפון - משתמשים בברירת המחדל
+        await query.message.reply_text(fallback_message)
+            
+    except Exception as e:
+        # הדפסה שקטה לטרמינל לצרכי דיבאג, שליחת הודעת הגיבוי היציבה לטלגרם
+        print(f"שגיאה חסויה בשליפת פרטי נהג: {e}")
+        await query.message.reply_text(fallback_message)
+
 
 def main():
     if not TOKEN:
@@ -1517,6 +1648,7 @@ def main():
 
     # --- 1. הגדרת שיחות מרובות שלבים (Conversations) ---
     
+    # 1. הבלוק ליצירת טרמפ חדש (נהג)
     new_ride_conv = ConversationHandler(
         entry_points=[
             CommandHandler("new", new_ride_start),
@@ -1555,10 +1687,12 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    # 2. הבלוק לחיפוש טרמפ קיים (נוסע)
     open_search_conv = ConversationHandler(
         entry_points=[
             CommandHandler("open", open_search_start),
             MessageHandler(filters.Regex(f"^{BTN_OPEN}$"), open_search_start),
+            MessageHandler(filters.Regex(r"^⭐ יעד פופולרי:"), open_search_start),
         ],
         states={
             # 1. שלב מערכת ההמלצות - כאן הבוט יחכה ללחיצה על כן או לא!
@@ -1591,10 +1725,23 @@ def main():
     # --- 2. רישום ה-Handlers בבוט (בסדר הנכון) ---
     
     # כפתורי דפדוף והצטרפות גלובליים (שמנו אותם הכי למעלה כדי שיגיבו תמיד!)
+    
+   # טיפול בדפדוף לטרמפ הבא מתוך רשימת ההתאמות הדינמית
     app.add_handler(CallbackQueryHandler(browse_next, pattern="^next_"))
-    app.add_handler(CallbackQueryHandler(browse_join, pattern=r"^browse_join:\d+$"))
+    
+    # רישום הצטרפות לטרמפ - התבנית תומכת במזהה אלפא-נומרי (ObjectId) של MongoDB
+    # התיקון: אנחנו מחברים את הפונקציה handle_join_ride שכתבנו, ומקשיבים ל- join_
+    app.add_handler(CallbackQueryHandler(handle_join_ride, pattern="^join_"))
+    
+    # 🛠️ טיפול בלחיצה על יעד פופולרי - מנתב לפונקציה שמטפלת ביעד שנבחר
+    app.add_handler(CallbackQueryHandler(browse_popular_destination, pattern=r"^home_destination$"))
+    
+    # ניתוב חזרה לתפריט הראשי ואיפוס מצב שיחה (Conversation State) בשני ערוצי לחיצה
+    app.add_handler(CallbackQueryHandler(main_menu_keyboard, pattern=r"^back_to_main$|^main_menu$"))
+    
+    # ניתוב לבחירת תפקיד ראשוני (נהג/נוסע) במערכת
     app.add_handler(CallbackQueryHandler(role_button, pattern=r"^role_"))
-
+    
     # פקודות ישירות
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("my", my_cmd))

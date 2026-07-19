@@ -1,9 +1,16 @@
+import os
 import datetime
 import certifi  # לוודא שהשורה הזו קיימת למעלה
 from pymongo import MongoClient
+from dotenv import load_dotenv
 
-# התחברות לשרת בענן בעזרת הקישור שלך
-CONNECTION_STRING = "mongodb+srv://elish1919:ez102030@cluster0.pesg1r3.mongodb.net/?appName=Cluster0"
+# טוענים את משתני הסביבה מקובץ .env
+load_dotenv()
+
+# התחברות לשרת בענן דרך משתנה סביבה (ולא ערך קשיח בקוד)
+CONNECTION_STRING = os.getenv("MONGO_URI")
+if not CONNECTION_STRING:
+    raise ValueError("MONGO_URI is missing. Check your .env file.")
 
 # אנחנו אומרים למונגו להשתמש בתעודות של certifi וגם מאפשרים ביטול אימות מקומי אם הרשת חוסמת
 client = MongoClient(
@@ -26,11 +33,6 @@ users_collection = db["users"]
 
 def save_ride_to_mongo(ride_data):
     """שומר נסיעה חדשה של נהג"""
-    # השורות החדשות שהוספנו כדי לעבוד על הבוט בבדיקות:
-    if ride_data.get("telegram_id") == 6320213595:
-        import random
-        ride_data["telegram_id"] = random.randint(100000, 999000)
-
     # הקוד המקורי והמעולה שלך שנשאר בדיוק אותו הדבר:
     result = rides_collection.insert_one(ride_data)
     return result.inserted_id
@@ -130,3 +132,29 @@ def get_last_searched_destination(user_id):
         print(f"[ERROR MONGO RECOMMENDATION] {e}")
     return None
 
+def get_most_popular_destination():
+    """מוצא את היעד הפופולרי ביותר מתוך הנסיעות הפתוחות בצורה פשוטה וחסינת באגים"""
+    try:
+        # 1. שליפת כל הנסיעות הפתוחות מהבסיס נתונים
+        all_open_rides = list(rides_collection.find({"status": "open"}))
+        
+        if not all_open_rides:
+            return "אוניברסיטת בר אילן"
+            
+        # 2. ספירה פשוטה של היעדים בעזרת מילון פייתון רגיל
+        destination_counts = {}
+        for ride in all_open_rides:
+            destination = ride.get("to")
+            if destination:
+                destination_counts[destination] = destination_counts.get(destination, 0) + 1
+        
+        if not destination_counts:
+            return "אוניברסיטת בר אילן"
+            
+        # 3. מציאת היעד עם מספר המופעים הגבוה ביותר
+        most_popular = max(destination_counts, key=destination_counts.get)
+        return most_popular
+        
+    except Exception as e:
+        print(f"[CRITICAL ERROR POPULAR] {e}")
+        return "אוניברסיטת בר אילן"
