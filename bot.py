@@ -1603,40 +1603,52 @@ async def geocode_place(place: str) -> tuple[float, float] | None:
 async def handle_join_ride(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()  # מעלים את חיווי הטעינה מהכפתור בטלגרם
-    
-    # הודעה קצרה, ברורה ובטוחה ב-100% לסרטון
-    await query.message.reply_text(
-        "איזה יופי, הבקשה שלך נשלחה! 🚗✨\n\n"
-        "הנהג קיבל עדכון על כך שברצונך להצטרף, והוא יצור איתך קשר בהקדם לתיאום הנסיעה. "
-        "נסיעה טובה!"
-    )
-    
+
+    ride_id = (query.data or "").replace("join_", "", 1)
+    fallback_message = "אופס, בדיוק עכשיו מישהו אחר לקח את הטרמפ הזה.\nבוא ננסה טרמפ אחר."
+
     try:
-        # קריאה לפונקציית הייבוא שלכן (ודאי שהשם תואם בדיוק למה שמופיע ב-Imports למעלה)
-        ride = get_ride_by_id_from_mongo(ride_id)
-        
-        if ride:
-            # שליפת הטלפון והשם מתוך הטרמפ שנמצא
-            driver_phone = ride.get("driver_phone", ride.get("phone"))
-            driver_name = ride.get("driver_name", ride.get("name", "הנהג"))
-            
-            # אם מצאנו מספר טלפון, נציג הודעה מורחבת עם הפרטים
-            if driver_phone:
-                await query.message.reply_text(
-                    f"איזה יופי! הבקשה שלך להצטרפות לטרמפ התקבלה בהצלחה. 🚗✨\n\n"
-                    f"פרטי הנהג ליצירת קשר מיידי:\n"
-                    f"👤 שם הנהג: {driver_name}\n"
-                    f"📞 מספר טלפון: {driver_phone}\n\n"
-                    f"מומלץ לשלוח לו הודעה או להתקשר כדי לתאם נקודת מפגש מדויקת. נסיעה טובה!"
-                )
-                return  # מסיימים את הפונקציה בהצלחה
-                
-        # אם הטרמפ לא נמצא או שאין לו טלפון - משתמשים בברירת המחדל
-        await query.message.reply_text(fallback_message)
-            
+        ride = find_ride(ride_id)
+
+        # מניעת הצטרפות כפולה: הטרמפ חייב להיות עדיין פתוח (לא נלקח כבר על ידי מישהו אחר)
+        if not ride or ride.get("status") != "open":
+            await query.message.reply_text(fallback_message)
+            return
+
+        ok = update_ride(ride_id, {
+            "status": "picked",
+            "picked_by": query.from_user.id,
+            "picked_at": datetime.now().isoformat(),
+        })
+        if not ok:
+            await query.message.reply_text(fallback_message)
+            return
+
+        # שליפת הטלפון והשם מתוך הטרמפ שנמצא
+        driver_phone = ride.get("driver_phone", ride.get("phone"))
+        driver_name = ride.get("driver_name", ride.get("name", "הנהג"))
+
+        # אם מצאנו מספר טלפון, נציג הודעה מורחבת עם הפרטים
+        if driver_phone:
+            await query.message.reply_text(
+                f"איזה יופי! הבקשה שלך להצטרפות לטרמפ התקבלה בהצלחה. 🚗✨\n\n"
+                f"פרטי הנהג ליצירת קשר מיידי:\n"
+                f"👤 שם הנהג: {driver_name}\n"
+                f"📞 מספר טלפון: {driver_phone}\n\n"
+                f"מומלץ לשלוח לו הודעה או להתקשר כדי לתאם נקודת מפגש מדויקת. נסיעה טובה!"
+            )
+            return
+
+        # אין מספר טלפון שמור על הטרמפ - הודעת הצלחה כללית
+        await query.message.reply_text(
+            "איזה יופי, הבקשה שלך נשלחה! 🚗✨\n\n"
+            "הנהג קיבל עדכון על כך שברצונך להצטרף, והוא יצור איתך קשר בהקדם לתיאום הנסיעה. "
+            "נסיעה טובה!"
+        )
+
     except Exception as e:
         # הדפסה שקטה לטרמינל לצרכי דיבאג, שליחת הודעת הגיבוי היציבה לטלגרם
-        print(f"שגיאה חסויה בשליפת פרטי נהג: {e}")
+        print(f"שגיאה חסויה בהצטרפות לטרמפ: {e}")
         await query.message.reply_text(fallback_message)
 
 

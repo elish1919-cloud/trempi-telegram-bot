@@ -296,3 +296,53 @@ Trempi/
               └─ _show / _browse_keyboard(join_, next_)
                     └─ "אני רוצה להצטרף" ─► handle_join_ride() ─► ✅ התאמה
 ```
+
+---
+
+## 9. בדיקות (Testing)
+
+הפרויקט כולל חבילת בדיקות אוטומטיות ב-`pytest`, המכסה את הלוגיקה הליבתית של הבוט
+(סינון גיאוגרפי, חלון זמן גמיש, ולידציית קלט, ניהול תפקידים ומניעת הצטרפות כפולה)
+ללא צורך בחיבור אמיתי ל-MongoDB או לטלגרם — כל הקריאות לרשת ולמסד הנתונים מוחלפות
+ב-mocks בעזרת `unittest.mock`.
+
+> **הערה:** `test_geo.py` ו-`test_mongo.py` הם סקריפטים ידניים ישנים (לא חלק מחבילת
+> ה-pytest) — `test_mongo.py` בפרט מזריק נתוני דמו ישירות ל-MongoDB האמיתי כשמריצים
+> אותו, ולכן `conftest.py` מוציא אותם במפורש מאיסוף הבדיקות (`collect_ignore`) כדי
+> ש-`pytest` לא ירוץ עליהם בטעות.
+
+### הרצת הבדיקות
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+
+להרצה מפורטת (שם כל בדיקה + תוצאה):
+
+```bash
+pytest -v
+```
+
+### מבנה הבדיקות ו-mocking
+
+| קובץ | מה נבדק |
+|------|----------|
+| `conftest.py` | תשתית משותפת: משתני סביבה מדומים ל-`BOT_TOKEN`/`MONGO_URI` (כדי שהייבוא של `bot.py`/`database.py` לא ידרוש `.env` אמיתי), בניית אובייקטי `Update`/`CallbackQuery`/`Message` מדומים (`unittest.mock.MagicMock`/`AsyncMock`), ו-`FakeContext` קליל במקום `ContextTypes.DEFAULT_TYPE`. גם קובע `collect_ignore` עבור `test_geo.py`/`test_mongo.py`. |
+| `test_validation.py` | ולידציית תאריך/שעה: `_extract_hhmm()` (למשל `"18:30"` תקין, `"מחר בבוקר"`/`"עכשיו"` לא מכילים שעה, `"25:00"`/`"12:60"` שעה/דקה לא חוקיות), `_hhmm_to_minutes()`, ו-`_is_valid_ddmm()` (פורמט `DD/MM`). |
+| `test_matching.py` | `distance_km()` (נוסחת Haversine) עם קואורדינטות אמיתיות (תל אביב / בר אילן / מודיעין עילית); סינון מרחק וסינון FLEX דרך `open_search_flex()` עם `get_open_rides_by_role_from_mongo`/`get_user` מוחלפים ב-mock; תרחיש "אין התאמה" (מרחק מדי גדול, זמן מחוץ לחלון, או שניהם). |
+| `test_ride_actions.py` | ביטול שיחה פעילה (`cancel()`), החלפת תפקיד נהג↔נוסע (`set_user_role()`/`get_user()`/`role_button()` עם `users.json` זמני לבדיקה), ומניעת הצטרפות כפולה לאותו טרמפ (`handle_join_ride()` עם `find_ride()`/`update_ride()` מוחלפים ב-mock). |
+
+**עקרונות ה-mocking:**
+- אף בדיקה לא פותחת חיבור אמיתי ל-MongoDB — `get_open_rides_by_role_from_mongo`, `find_ride`, ו-`update_ride` מוחלפים ב-`monkeypatch.setattr` בפונקציות/מחלקות מדומות בזיכרון.
+- אף בדיקה לא כותבת ל-`users.json` האמיתי — הבדיקות שנוגעות בקובץ המשתמשים משתמשות בפיקסצ'ר `isolated_users_file` שמפנה את `bot.USERS_FILE` לקובץ זמני (`tmp_path`).
+- קריאות ל-Telegram (`reply_text`, `edit_message_text`, `answer`) מוחלפות ב-`AsyncMock` כדי לבדוק בדיוק אילו הודעות נשלחו, בלי לפתוח חיבור אמיתי לבוט.
+
+### באג שהתגלה ותוקן תוך כדי כתיבת הבדיקות
+
+בזמן כתיבת בדיקות ל"מניעת הצטרפות כפולה" התגלה שה-handler האמיתי שמחובר לכפתור
+"אני רוצה להצטרף" (`handle_join_ride()`) התייחס למשתנים שלא הוגדרו מעולם (`ride_id`,
+`fallback_message`), כך שכל לחיצה אמיתית על הכפתור הייתה קורסת עם `NameError` — וגם לא
+בדק בפועל אם הטרמפ כבר נלקח לפני שהוא עונה בהצלחה. הלוגיקה הנכונה (בדיקת `status`
+ועדכון אטומי) כבר הייתה קיימת בפונקציה `browse_join()` שמעולם לא חוברה בפועל. התיקון
+מחבר את אותה לוגיקה לתוך `handle_join_ride()`, ומכוסה עכשיו ב-`test_ride_actions.py`.
