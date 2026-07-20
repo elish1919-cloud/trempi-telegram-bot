@@ -1,71 +1,71 @@
-# Trempi 🚗 — בוט טלגרם לשיתוף טרמפים קהילתי
+# Trempi 🚗 — Community Rideshare Telegram Bot
 
-בוט טלגרם המחבר בין **נהגים** שמפרסמים טרמפ לבין **נוסעים** שמחפשים טרמפ,
-תוך התאמה חכמה לפי **מסלול**, **מרחק גיאוגרפי** (חישוב Haversine) ו**חלון זמן גמיש**.
-
----
-
-## 1. תיאור ומטרת הפרויקט
-
-**Trempi** הוא בוט טלגרם בעברית שנועד להקל על שיתוף נסיעות בתוך קהילה.
-המשתמש נרשם פעם אחת (גיל, מין, כתובת, טלפון ותפקיד מועדף), ולאחר מכן יכול:
-
-- **בתור נהג** — לפרסם טרמפ (מאיפה יוצאים, לאן, ומתי).
-- **בתור נוסע** — לחפש טרמפים פתוחים, לדפדף בין ההתאמות ולהצטרף לטרמפ המתאים.
-
-הבוט מבצע **התאמה אוטומטית** בין נוסע לנהג על בסיס:
-- **מסלול** (נקודת מוצא ויעד).
-- **קרבה גיאוגרפית** — נסיעה נחשבת מתאימה רק אם המוצא והיעד של הנהג נמצאים בטווח של עד
-  `MAX_PICKUP_DISTANCE_KM = 5` ק״מ מהמוצא והיעד של הנוסע (חישוב מרחק בנוסחת Haversine).
-- **חלון זמן גמיש** — הנוסע בוחר עד כמה הוא גמיש בשעה (±15 דק׳ / ±30 דק׳ / "גמיש מאוד").
-
-בנוסף, הבוט כולל **מנוע המלצות אישי** המבוסס על MongoDB, שמציע לנוסע את היעד האחרון שחיפש
-ואת היעד הפופולרי ביותר, כדי לקצר את תהליך החיפוש.
+A Telegram bot that connects **drivers** offering rides with **passengers** looking for rides,
+using smart matching based on **route**, **geographic distance** (Haversine calculation), and a **flexible time window**.
 
 ---
 
-## 2. תכונות מרכזיות
+## 1. Project Description and Purpose
 
-| תכונה | תיאור |
+**Trempi** is a Hebrew-language Telegram bot designed to make ride-sharing within a community easier.
+A user registers once (age, gender, address, phone, and preferred role), and can then:
+
+- **As a driver** — post a ride (where from, where to, and when).
+- **As a passenger** — search open rides, browse matches, and join the ride that fits.
+
+The bot performs **automatic matching** between passenger and driver based on:
+- **Route** (origin and destination point).
+- **Geographic proximity** — a ride is considered a match only if the driver's origin and destination are within
+  `MAX_PICKUP_DISTANCE_KM = 5` km of the passenger's origin and destination (distance calculated with the Haversine formula).
+- **Flexible time window** — the passenger chooses how flexible they are on time (±15 min / ±30 min / "very flexible").
+
+In addition, the bot includes a **personal recommendation engine** based on MongoDB, which suggests the passenger's
+last searched destination and the most popular destination, to shorten the search process.
+
+---
+
+## 2. Key Features
+
+| Feature | Description |
 |-------|-------|
-| **הרשמה מודרכת** | שיחת רב-שלבית: גיל → מין → כתובת → טלפון → תפקיד מועדף (נהג / נוסע / גם וגם), עם ולידציה (גיל 16–120, טלפון 9–10 ספרות). |
-| **פרופיל אישי** | צפייה בפרטים (`הפרופיל שלי`) ואפשרות לעריכה. |
-| **פרסום טרמפ (נהג)** | שיחה של מאיפה → לאן → מתי, כולל geocoding אוטומטי של נקודות המוצא והיעד. |
-| **חיפוש טרמפ (נוסע)** | שיחה מודרכת: יום → תאריך → מוצא → יעד → שעה → גמישות. |
-| **מנוע המלצות** | הצעת היעד האחרון שחיפש המשתמש (`get_last_searched_destination`) והיעד הפופולרי ביותר (`get_most_popular_destination`). |
-| **סינון גיאוגרפי** | התאמה לפי מרחק אמיתי בק״מ בעזרת נוסחת Haversine (`distance_km`). |
-| **חלון זמן גמיש (FLEX)** | סינון נסיעות לפי הפרש הדקות המותר בין שעת החיפוש לשעת הנסיעה. |
-| **דפדוף בהתאמות** | כפתורי "תראה לי טרמפ אחר" / "אני רוצה להצטרף" מעל רשימת ההתאמות. |
-| **הצטרפות לטרמפ** | הנוסע מצטרף בלחיצת כפתור ומקבל אישור שהנהג יצור קשר. |
-| **הבקשות שלי** | תצוגת הנסיעות האחרונות של המשתמש. |
-| **Geocoding + Cache** | המרת שם מקום לקואורדינטות דרך Nominatim (OpenStreetMap), עם קאש מקומי (`geocache.json`) לצמצום קריאות רשת. |
-| **אחסון בענן** | הנסיעות נשמרות ב-MongoDB Atlas; פרטי המשתמשים נשמרים בקובץ `users.json` מקומי. |
+| **Guided registration** | Multi-step conversation: age → gender → address → phone → preferred role (driver / passenger / both), with validation (age 16–120, phone 9–10 digits). |
+| **Personal profile** | View details (`My Profile`) with an option to edit. |
+| **Post a ride (driver)** | A from → to → when conversation, including automatic geocoding of the origin and destination points. |
+| **Search for a ride (passenger)** | Guided conversation: day → date → origin → destination → time → flexibility. |
+| **Recommendation engine** | Suggests the user's last searched destination (`get_last_searched_destination`) and the most popular destination (`get_most_popular_destination`). |
+| **Geographic filtering** | Matching by real distance in km using the Haversine formula (`distance_km`). |
+| **Flexible time window (FLEX)** | Filters rides by the allowed minute difference between the search time and the ride time. |
+| **Browsing matches** | "Show me another ride" / "I want to join" buttons above the match list. |
+| **Joining a ride** | The passenger joins with a button tap and receives confirmation that the driver will get in touch. |
+| **My requests** | Displays the user's recent rides. |
+| **Geocoding + Cache** | Converts a place name to coordinates via Nominatim (OpenStreetMap), with a local cache (`geocache.json`) to reduce network calls. |
+| **Cloud storage** | Rides are stored in MongoDB Atlas; user details are stored in a local `users.json` file. |
 
 ---
 
-## 3. הוראות התקנה והרצה
+## 3. Installation and Setup Instructions
 
-### דרישות מוקדמות
-- Python 3.10 ומעלה (הקוד משתמש בתחביר `type | None`).
-- טוקן בוט טלגרם מ-[@BotFather](https://t.me/BotFather).
-- גישה למסד נתונים MongoDB (Atlas או מקומי).
+### Prerequisites
+- Python 3.10 or higher (the code uses `type | None` syntax).
+- A Telegram bot token from [@BotFather](https://t.me/BotFather).
+- Access to a MongoDB database (Atlas or local).
 
-### שלב 1 — יצירת סביבה וירטואלית
+### Step 1 — Create a virtual environment
 
 ```bash
-# יצירת הסביבה
+# Create the environment
 python -m venv venv
 
-# הפעלה ב-Windows (PowerShell)
+# Activate on Windows (PowerShell)
 venv\Scripts\Activate.ps1
 
-# הפעלה ב-Linux / macOS
+# Activate on Linux / macOS
 source venv/bin/activate
 ```
 
-### שלב 2 — התקנת תלויות
+### Step 2 — Install dependencies
 
-התלויות מרוכזות בקובץ `requirements.txt` עם גרסאות מוצמדות (pinned):
+The dependencies are listed in `requirements.txt` with pinned versions:
 
 ```text
 python-telegram-bot==22.5
@@ -75,274 +75,290 @@ requests==2.32.5
 python-dotenv==1.2.1
 ```
 
-התקנה:
+Install:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### שלב 3 — הגדרת משתני סביבה
-צרו קובץ `.env` בתיקיית השורש (ראו סעיף 4).
+### Step 3 — Configure environment variables
+Create a `.env` file in the project root (see section 4).
 
-### שלב 4 — הרצת הבוט
+### Step 4 — Run the bot
 
 ```bash
 python bot.py
 ```
 
-בהצלחה תופיע בטרמינל ההודעה `Bot is running...` והבוט יתחיל לעבוד ב-Polling.
-מכאן ניתן לפתוח את הבוט בטלגרם ולשלוח `/start`.
+On success, the terminal will show `Bot is running...` and the bot will start working via polling.
+From here you can open the bot in Telegram and send `/start`.
 
 ---
 
-## 4. ניהול משתני סביבה (.env)
+## 4. Environment Variable Management (.env)
 
-הקוד טוען את קובץ `.env` באמצעות `python-dotenv` (`load_dotenv()` ב-`bot.py`).
+The code loads the `.env` file via `python-dotenv` (`load_dotenv()` in `bot.py`).
 
-| מפתח | חובה? | תיאור |
+| Key | Required? | Description |
 |------|-------|-------|
-| `BOT_TOKEN` | ✅ כן | טוקן הבוט מטלגרם. נטען ב-`bot.py` (`os.getenv("BOT_TOKEN")`). אם חסר — הבוט זורק שגיאה `BOT_TOKEN is missing` ולא עולה. |
-| `MONGO_URI` | ✅ כן | מחרוזת ההתחברות ל-MongoDB Atlas (כולל שם משתמש וסיסמה). נטענת ב-`database.py` (`os.getenv("MONGO_URI")`). אם חסרה — נזרקת שגיאה `MONGO_URI is missing` והבוט לא עולה. |
+| `BOT_TOKEN` | ✅ Yes | The Telegram bot token. Loaded in `bot.py` (`os.getenv("BOT_TOKEN")`). If missing — the bot raises a `BOT_TOKEN is missing` error and does not start. |
+| `MONGO_URI` | ✅ Yes | The MongoDB Atlas connection string (including username and password). Loaded in `database.py` (`os.getenv("MONGO_URI")`). If missing — a `MONGO_URI is missing` error is raised and the bot does not start. |
 
-דוגמה לקובץ `.env`:
+Example `.env` file:
 
 ```env
 BOT_TOKEN=123456789:ABCdefGhIJKlmnOPQRstuVWxyz
 MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?appName=Cluster0
 ```
 
-> **הערה לגבי אבטחה:** קובץ `.env` מכיל סודות (טוקן הבוט וסיסמת ה-DB) ולכן אסור לכלול אותו
-> ב-Git. ודאו שהוא מופיע ב-`.gitignore`.
+> **Security note:** The `.env` file contains secrets (the bot token and the DB password), so it must never be
+> committed to Git. Make sure it is listed in `.gitignore`.
 
 ---
 
-## 5. הערות אבטחה (Security Notes)
+## 5. Security Notes
 
-- **אחסון פרטי גישה למסד הנתונים:** מחרוזת ההתחברות ל-MongoDB (`MONGO_URI`, כולל שם משתמש
-  וסיסמה) וטוקן הבוט (`BOT_TOKEN`) נשמרים אך ורק בקובץ `.env` המקומי, ואינם מחוברים (committed)
-  ל-Git. הקובץ `.env` רשום ב-`.gitignore` ולכן אינו נכלל בהיסטוריית ה-Git של הפרויקט.
-- **סודות שנחשפו בעבר:** ככל שפרטי גישה כלשהם נחשפו בעבר בהיסטוריית ה-Git (למשל בקומיטים
-  ישנים לפני הוספת `.env` ל-`.gitignore`), הם **סובבו (rotated)** — כלומר הוחלפו בערכים חדשים —
-  והערכים הישנים שנחשפו **אינם תקפים עוד** ואינם מספקים גישה למערכת.
-- **המלצה למפתחים:** בעת שכפול (clone) של הפרויקט, יש ליצור קובץ `.env` חדש מקומי (לפי הדוגמה
-  בסעיף 4) ולעולם לא להוסיף אותו ל-Git. אם בטעות סוד מגיע ל-commit, יש לסובב אותו מיידית גם אם
-  הקומיט הוסר בהמשך, מכיוון שהיסטוריית Git עשויה עדיין לשמר אותו.
+- **Storing database credentials:** The MongoDB connection string (`MONGO_URI`, including username
+  and password) and the bot token (`BOT_TOKEN`) are stored only in the local `.env` file, and are never committed
+  to Git. The `.env` file is listed in `.gitignore` and is therefore not included in the project's Git history.
+- **Previously exposed secrets:** To the extent that any credentials were previously exposed in the Git history
+  (for example, in old commits before `.env` was added to `.gitignore`), they have been **rotated** — i.e.,
+  replaced with new values — and the old exposed values **are no longer valid** and do not grant access to the system.
+- **Recommendation for developers:** When cloning the project, create a new local `.env` file (per the example
+  in section 4) and never add it to Git. If a secret is accidentally committed, rotate it immediately even if
+  the commit is later removed, since Git history may still retain it.
+- **Removed unused and personal-data files:** `rides.json` was unused dead code — no code in `bot.py` or
+  `database.py` ever read or wrote it — and it contained real address data from testing, so it has been deleted
+  from the repository entirely. `users.json`, which contains personal test data (name, phone number, age, gender,
+  and address) collected while testing the bot, has been removed from Git tracking and added to `.gitignore`
+  going forward: it still exists locally on disk for the bot to read/write at runtime, but new commits will no
+  longer include it. Note that this does not erase copies of that data already present in earlier Git history/commits.
 
 ---
 
-## 6. מבנה תיקיות
+## 6. Folder Structure
 
 ```
 Trempi/
-├── bot.py            # לב הבוט: כל ה-handlers, שיחות ה-ConversationHandler,
-│                     #   לוגיקת ההרשמה/חיפוש/פרסום, geocoding ונוסחת Haversine
-├── database.py       # שכבת הגישה ל-MongoDB Atlas: שמירה/שליפה/עדכון נסיעות + מנוע ההמלצות
-├── users.json        # אחסון מקומי של פרטי המשתמשים הרשומים (נוצר/מתעדכן אוטומטית)
-├── geocache.json     # קאש מקומי של תוצאות geocoding (נוצר אוטומטית בזמן ריצה)
-├── rides.json        # קובץ נסיעות מדור קודם (לפני המעבר ל-MongoDB)
-├── test_mongo.py     # נתוני בדיקה (fake_rides) להזרקה למסד בזמן TEST_MODE
-├── test_geo.py       # בדיקות/ניסויים סביב פונקציות ה-geocoding
-├── requirements.txt  # רשימת התלויות עם גרסאות מוצמדות
-├── .env              # משתני סביבה (BOT_TOKEN) — לא נכלל ב-Git
-├── venv/             # סביבה וירטואלית
+├── bot.py            # The heart of the bot: all handlers, ConversationHandler conversations,
+│                     #   registration/search/posting logic, geocoding and the Haversine formula
+├── database.py       # MongoDB Atlas access layer: save/fetch/update rides + the recommendation engine
+├── users.json        # Local storage of registered users' details (created/updated automatically) —
+│                     #   contains real personal data, not tracked in Git (see Security Notes)
+├── geocache.json     # Local cache of geocoding results (created automatically at runtime), not tracked in Git
+├── test_mongo.py     # Test data (fake_rides) for injecting into the DB during TEST_MODE
+├── test_geo.py       # Tests/experiments around the geocoding functions
+├── requirements.txt  # List of dependencies with pinned versions
+├── requirements-dev.txt  # Test-only dependencies (pytest, pytest-asyncio)
+├── .env              # Environment variables (BOT_TOKEN, MONGO_URI) — not included in Git
+├── venv/             # Virtual environment
 └── README.md
 ```
 
-**חלוקת אחריות בין הקבצים:**
-- `bot.py` — כל התקשורת עם טלגרם, ניהול מצבי השיחה, הוולידציות, החישוב הגיאוגרפי (Haversine) וסינון חלון הזמן.
-- `database.py` — כל הפעולות מול MongoDB (Collection בשם `rides`), כולל שאילתות ההמלצות.
+> Note: `rides.json` (a legacy pre-MongoDB rides file, unused by any code) has been deleted from the
+> repository entirely — see Security Notes above.
+
+**Division of responsibility between files:**
+- `bot.py` — all Telegram communication, conversation state management, validations, geographic calculation
+  (Haversine), and time-window filtering.
+- `database.py` — all operations against MongoDB (the `rides` collection), including the recommendation queries.
 
 ---
 
-## 7. דוגמאות שימוש — שיחה טיפוסית
+## 7. Usage Examples — A Typical Conversation
 
-### 👤 מסלול הנהג — פרסום טרמפ
+### 👤 Driver Flow — Posting a Ride
 
-1. הנהג שולח `/start`. אם טרם נרשם, הבוט מציג כפתור **"התחלת הרשמה"** ומדריך אותו דרך
-   שאלות הגיל, המין, הכתובת, הטלפון והתפקיד המועדף.
-2. לאחר ההרשמה מופיע התפריט הראשי (מקלדת כפתורים):
+1. The driver sends `/start`. If not yet registered, the bot shows a **"Start Registration"** button and guides
+   them through questions about age, gender, address, phone, and preferred role.
+2. After registration, the main menu appears (button keyboard):
 
    ```
-   [ יצירת טרמפ ]   [ מה פתוח עכשיו ]
-   [ הבקשות שלי ]   [ עזרה ]
-   [ הפרופיל שלי ]
+   [ Create a Ride ]   [ What's Available Now ]
+   [ My Requests ]   [ Help ]
+   [ My Profile ]
    ```
-3. הנהג לוחץ **"יצירת טרמפ"**, והבוט שואל בזה אחר זה:
+3. The driver taps **"Create a Ride"**, and the bot asks, one after another:
 
-   > 🤖 **מאיפה יוצאים?**
-   > 👤 תל אביב
+   > 🤖 **Where are you leaving from?**
+   > 👤 Tel Aviv
    >
-   > 🤖 **לאן נוסעים?**
-   > 👤 אוניברסיטת בר אילן
+   > 🤖 **Where are you going?**
+   > 👤 Bar-Ilan University
    >
-   > 🤖 **מתי זה? אפשר לכתוב למשל: עכשיו / 18:30 / מחר בבוקר**
+   > 🤖 **When is it? You can write, for example: now / 18:30 / tomorrow morning**
    > 👤 07:00
 
-4. הבוט מבצע geocoding לשתי הנקודות, שומר את הטרמפ ב-MongoDB (סטטוס `open`) ומשיב:
+4. The bot geocodes both points, saves the ride to MongoDB (status `open`), and replies:
 
-   > 🤖 קיבלתי.
-   > מספר בקשה: 665f...
-   > מוצא: תל אביב
-   > יעד: אוניברסיטת בר אילן
-   > מתי: 07:00
+   > 🤖 Got it.
+   > Request number: 665f...
+   > Origin: Tel Aviv
+   > Destination: Bar-Ilan University
+   > When: 07:00
    >
-   > 🤖 מעולה. הבקשה נשמרה והמערכת מחפשת עבורך התאמה.
+   > 🤖 Great. The request has been saved and the system is looking for a match for you.
 
-### 🎒 מסלול הנוסע — מציאת טרמפ והצטרפות
+### 🎒 Passenger Flow — Finding and Joining a Ride
 
-1. הנוסע לוחץ **"מה פתוח עכשיו"** (או שולח `/open`).
-2. אם יש לו היסטוריית חיפושים, הבוט מציג המלצות אישיות:
+1. The passenger taps **"What's Available Now"** (or sends `/open`).
+2. If they have search history, the bot shows personalized recommendations:
 
-   > 🤖 היי תמר, לאן נוסעים הפעם? 🚗
-   > `[ 🕒 לנסיעה האחרונה שלי — אוניברסיטת בר אילן ]`
-   > `[ ⭐ לנסיעה הפופולרית שלך — אוניברסיטת בר אילן ]`
-   > `[ 🔍 קח אותי ליעד אחר ]`
+   > 🤖 Hi Tamar, where are you headed this time? 🚗
+   > `[ 🕒 My last ride — Bar-Ilan University ]`
+   > `[ ⭐ Your most popular ride — Bar-Ilan University ]`
+   > `[ 🔍 Take me to another destination ]`
 
-3. הבוט מנחה דרך שלבי החיפוש:
+3. The bot guides them through the search steps:
 
-   > 🤖 **לאיזה יום הנסיעה?**  `[ היום ]  [ מחר ]  [ תאריך אחר ]`
+   > 🤖 **Which day is the ride?**  `[ Today ]  [ Tomorrow ]  [ Another date ]`
    >
-   > 🤖 **מעולה 😊 מאיפה אתה יוצא?**
-   > 👤 תל אביב
+   > 🤖 **Great 😊 Where are you leaving from?**
+   > 👤 Tel Aviv
    >
-   > 🤖 **ולאן אתה נוסע?** (מדולג אם היעד כבר נבחר מההמלצה)
-   > 👤 אוניברסיטת בר אילן
+   > 🤖 **And where are you going?** (skipped if the destination was already chosen from a recommendation)
+   > 👤 Bar-Ilan University
    >
-   > 🤖 **ובאיזו שעה?** (פורמט 18:30, או "לא משנה")
+   > 🤖 **And what time?** (format 18:30, or "doesn't matter")
    > 👤 07:00
    >
-   > 🤖 **כמה אתה גמיש בשעה? 😊**  `[ ±15 דק׳ ]  [ ±30 דק׳ ]  [ אני גמיש מאוד ]`
+   > 🤖 **How flexible are you on time? 😊**  `[ ±15 min ]  [ ±30 min ]  [ I'm very flexible ]`
 
-4. הבוט מבצע סינון גיאוגרפי + סינון חלון זמן, ומציג את ההתאמה הראשונה:
+4. The bot performs geographic filtering + time-window filtering, and shows the first match:
 
-   > 🤖 איזה כיף תמר! מצאתי טרמפ 👇
-   > 🚗 מוצא: תל אביב
-   > 📍 יעד: אוניברסיטת בר אילן
-   > ⏰ מתי: 07:00
+   > 🤖 How exciting, Tamar! I found a ride 👇
+   > 🚗 Origin: Tel Aviv
+   > 📍 Destination: Bar-Ilan University
+   > ⏰ When: 07:00
    >
-   > מה תרצה לעשות?
-   > `[ מושלם, אני רוצה להצטרף ]`
-   > `[ תראה לי טרמפ אחר ]`
+   > What would you like to do?
+   > `[ Perfect, I want to join ]`
+   > `[ Show me another ride ]`
 
-5. בלחיצה על **"אני רוצה להצטרף"** נסגרת ההתאמה, והנוסע מקבל:
+5. Tapping **"I want to join"** closes the match, and the passenger receives:
 
-   > 🤖 איזה יופי, הבקשה שלך נשלחה! 🚗✨
-   > הנהג קיבל עדכון על כך שברצונך להצטרף, והוא יצור איתך קשר בהקדם לתיאום הנסיעה. נסיעה טובה!
+   > 🤖 Wonderful, your request has been sent! 🚗✨
+   > The driver has been notified that you want to join, and will contact you soon to coordinate the ride. Have a great trip!
 
 ---
 
-## 8. הסבר הרצה מקצה לקצה (זרימת האירועים הטכנית)
+## 8. End-to-End Flow Explanation (Technical Event Flow)
 
-מרגע `/start` ועד יצירת ההתאמה בין נהג לנוסע:
+From the moment `/start` is sent until the match between driver and passenger is created:
 
-### א. הרשמה — `registration_conv`
-1. `/start` מפעיל את ה-handler `start()` ב-`bot.py`. הפונקציה קוראת ל-`register_or_update_user()`
-   שכותבת/מעדכנת את הרשומה ב-`users.json`.
-2. אם המשתמש לא רשום — מוצג כפתור `start_registration`, שמפעיל `ConversationHandler`
-   העובר בין המצבים `REG_AGE → REG_GENDER → REG_ADDRESS → REG_PHONE → REG_ROLE`.
-3. בסיום, `reg_role_button()` קורא ל-`update_user_fields()` ומסמן `is_registered = True` ב-`users.json`.
+### A. Registration — `registration_conv`
+1. `/start` triggers the `start()` handler in `bot.py`. The function calls `register_or_update_user()`,
+   which writes/updates the record in `users.json`.
+2. If the user is not registered — the `start_registration` button is shown, which triggers a `ConversationHandler`
+   that moves through the states `REG_AGE → REG_GENDER → REG_ADDRESS → REG_PHONE → REG_ROLE`.
+3. At the end, `reg_role_button()` calls `update_user_fields()` and sets `is_registered = True` in `users.json`.
 
-### ב. פרסום טרמפ (הנהג) — `new_ride_conv`
-1. הכפתור "יצירת טרמפ" מפעיל את `new_ride_start()` ואת השיחה `ASK_FROM → ASK_TO → ASK_WHEN`.
-2. ב-`ask_when()`:
-   - נקראת `geocode_place()` (עוברת ל-`geocode_place_osm()` דרך executor) על המוצא והיעד →
-     מתקבלות קואורדינטות `(lat, lon)` מ-Nominatim (עם קאש ב-`geocache.json`).
-   - נבנה מילון `ride` עם `from_coords` / `to_coords` / `when` / `status="open"`.
-   - `add_ride()` ב-`bot.py` קוראת ל-`save_ride_to_mongo()` ב-`database.py` → הנסיעה נשמרת
-     ב-Collection `rides` ב-MongoDB, וה-`_id` מוחזר כ-`ride_id`.
+### B. Posting a Ride (Driver) — `new_ride_conv`
+1. The "Create a Ride" button triggers `new_ride_start()` and the `ASK_FROM → ASK_TO → ASK_WHEN` conversation.
+2. In `ask_when()`:
+   - `geocode_place()` is called (delegates to `geocode_place_osm()` via an executor) for both the origin and
+     destination → coordinates `(lat, lon)` are obtained from Nominatim (with caching in `geocache.json`).
+   - A `ride` dict is built with `from_coords` / `to_coords` / `when` / `status="open"`.
+   - `add_ride()` in `bot.py` calls `save_ride_to_mongo()` in `database.py` → the ride is saved
+     to the `rides` collection in MongoDB, and the `_id` is returned as `ride_id`.
 
-### ג. חיפוש והתאמה (הנוסע) — `open_search_conv`
-1. הכפתור "מה פתוח עכשיו" / `/open` מפעיל את `open_search_start()`:
-   - קורא ל-`get_last_searched_destination()` ו-`get_most_popular_destination()` (ב-`database.py`)
-     כדי לבנות את מסך ההמלצות (מצב `SEARCH_RECOMMENDATION`).
-2. השיחה ממשיכה במצבים: `SEARCH_DAY → (SEARCH_DATE) → SEARCH_FROM → SEARCH_TO → SEARCH_TIME → SEARCH_FLEX`.
-   - `open_search_to()` מבצע geocoding ליעד (`search_to_coords`).
-3. **נקודת ההתאמה — `open_search_flex()`** (המצב `SEARCH_FLEX`):
-   - שולף מ-MongoDB את כל הנסיעות הפתוחות של התפקיד ההפוך (`get_open_rides_by_role_from_mongo()`):
-     נוסע שמחפש → מקבל נסיעות של `driver`, ולהיפך.
-   - אם חסרות קואורדינטות למוצא/יעד — משלים אותן בזמן אמת דרך `geocode_place()`.
-   - **סינון גיאוגרפי (Haversine):** לכל נסיעה מחושב `distance_km(search_from_coords, ride_from_coords)`
-     ו-`distance_km(search_to_coords, ride_to_coords)`. הנסיעה נשמרת רק אם **שני** המרחקים
-     קטנים או שווים ל-`MAX_PICKUP_DISTANCE_KM` (5 ק״מ). הפונקציה `distance_km()` מיישמת את
-     נוסחת Haversine (`bot.py`). אם אין קואורדינטות כלל — יש נפילה חכמה לסינון טקסטואלי לפי שם עיר.
-   - **סינון חלון הזמן (FLEX):** אם נבחרה שעה, כל שעה מומרת לדקות עם `_hhmm_to_minutes()`,
-     ומחושב `diff = abs(ride_minutes - search_minutes)`. הנסיעה עוברת את הסינון רק אם
-     `diff <= flex_minutes` (15 / 30). ב-"גמיש מאוד" (`flex_minutes = None`) הסינון הזמני מדולג.
-   - התוצאות ממוינות ונשמרות ב-`context.chat_data["browse_rides"]`, וההתאמה הראשונה מוצגת עם
-     המקלדת `_browse_keyboard(current_id, next_id)`.
+### C. Searching and Matching (Passenger) — `open_search_conv`
+1. The "What's Available Now" button / `/open` triggers `open_search_start()`:
+   - Calls `get_last_searched_destination()` and `get_most_popular_destination()` (in `database.py`)
+     to build the recommendations screen (state `SEARCH_RECOMMENDATION`).
+2. The conversation continues through the states: `SEARCH_DAY → (SEARCH_DATE) → SEARCH_FROM → SEARCH_TO → SEARCH_TIME → SEARCH_FLEX`.
+   - `open_search_to()` geocodes the destination (`search_to_coords`).
+3. **The matching point — `open_search_flex()`** (state `SEARCH_FLEX`):
+   - Fetches from MongoDB all open rides of the opposite role (`get_open_rides_by_role_from_mongo()`):
+     a passenger searching → gets `driver` rides, and vice versa.
+   - If origin/destination coordinates are missing — fills them in real time via `geocode_place()`.
+   - **Geographic filtering (Haversine):** For each ride, `distance_km(search_from_coords, ride_from_coords)`
+     and `distance_km(search_to_coords, ride_to_coords)` are computed. The ride is kept only if **both** distances
+     are less than or equal to `MAX_PICKUP_DISTANCE_KM` (5 km). The `distance_km()` function implements the
+     Haversine formula (`bot.py`). If there are no coordinates at all — there is a smart fallback to text-based
+     filtering by city name.
+   - **Time window filtering (FLEX):** If a time was chosen, each time is converted to minutes with
+     `_hhmm_to_minutes()`, and `diff = abs(ride_minutes - search_minutes)` is computed. The ride passes the filter
+     only if `diff <= flex_minutes` (15 / 30). With "very flexible" (`flex_minutes = None`), the time filter is skipped.
+   - The results are sorted and stored in `context.chat_data["browse_rides"]`, and the first match is shown with
+     the `_browse_keyboard(current_id, next_id)` keyboard.
 
-### ד. דפדוף והצטרפות (סגירת ההתאמה)
-1. כפתור **"תראה לי טרמפ אחר"** (`callback_data="next_..."`) מטופל ע״י `browse_next()`, ששולף
-   מ-MongoDB / מהזיכרון את הטרמפ הבא ומציג אותו.
-2. כפתור **"אני רוצה להצטרף"** (`callback_data="join_..."`) מטופל ע״י `handle_join_ride()`, ששולח
-   לנוסע אישור שההצטרפות נקלטה ושהנהג ייצור קשר — זוהי נקודת ההתאמה הסופית בין הנוסע לנהג.
+### D. Browsing and Joining (Closing the Match)
+1. The **"Show me another ride"** button (`callback_data="next_..."`) is handled by `browse_next()`, which fetches
+   the next ride from MongoDB / memory and displays it.
+2. The **"I want to join"** button (`callback_data="join_..."`) is handled by `handle_join_ride()`, which sends
+   the passenger confirmation that the join was received and that the driver will make contact — this is the final
+   matching point between passenger and driver.
 
-### תרשים זרימה מקוצר
+### Condensed Flow Diagram
 
 ```
 /start ─► start() ─► register_or_update_user() ─► users.json
-   └─(לא רשום)─► registration_conv (REG_AGE…REG_ROLE) ─► update_user_fields()
+   └─(not registered)─► registration_conv (REG_AGE…REG_ROLE) ─► update_user_fields()
 
-[נהג] "יצירת טרמפ" ─► new_ride_conv (ASK_FROM→ASK_TO→ASK_WHEN)
+[Driver] "Create a Ride" ─► new_ride_conv (ASK_FROM→ASK_TO→ASK_WHEN)
         └─► geocode_place() ─► add_ride() ─► save_ride_to_mongo() ─► MongoDB(rides, status=open)
 
-[נוסע] "מה פתוח עכשיו" ─► open_search_conv
+[Passenger] "What's Available Now" ─► open_search_conv
         ├─ SEARCH_RECOMMENDATION (get_last_searched_destination / get_most_popular_destination)
         ├─ SEARCH_DAY→FROM→TO→TIME
         └─ SEARCH_FLEX ─► open_search_flex():
               ├─ get_open_rides_by_role_from_mongo(target_role)   [database.py]
-              ├─ distance_km()  ≤ 5 ק״מ   ← סינון Haversine       [bot.py]
-              ├─ abs(ride−search) ≤ flex_minutes  ← חלון FLEX     [bot.py]
+              ├─ distance_km()  ≤ 5 km   ← Haversine filtering       [bot.py]
+              ├─ abs(ride−search) ≤ flex_minutes  ← FLEX window     [bot.py]
               └─ _show / _browse_keyboard(join_, next_)
-                    └─ "אני רוצה להצטרף" ─► handle_join_ride() ─► ✅ התאמה
+                    └─ "I want to join" ─► handle_join_ride() ─► ✅ Match
 ```
 
 ---
 
-## 9. בדיקות (Testing)
+## 9. Testing
 
-הפרויקט כולל חבילת בדיקות אוטומטיות ב-`pytest`, המכסה את הלוגיקה הליבתית של הבוט
-(סינון גיאוגרפי, חלון זמן גמיש, ולידציית קלט, ניהול תפקידים ומניעת הצטרפות כפולה)
-ללא צורך בחיבור אמיתי ל-MongoDB או לטלגרם — כל הקריאות לרשת ולמסד הנתונים מוחלפות
-ב-mocks בעזרת `unittest.mock`.
+The project includes an automated `pytest` test suite covering the bot's core logic
+(geographic filtering, flexible time window, input validation, role management, and duplicate-join prevention)
+without needing a real connection to MongoDB or Telegram — all network and database calls are replaced
+with mocks using `unittest.mock`.
 
-> **הערה:** `test_geo.py` ו-`test_mongo.py` הם סקריפטים ידניים ישנים (לא חלק מחבילת
-> ה-pytest) — `test_mongo.py` בפרט מזריק נתוני דמו ישירות ל-MongoDB האמיתי כשמריצים
-> אותו, ולכן `conftest.py` מוציא אותם במפורש מאיסוף הבדיקות (`collect_ignore`) כדי
-> ש-`pytest` לא ירוץ עליהם בטעות.
+> **Note:** `test_geo.py` and `test_mongo.py` are old manual scripts (not part of the
+> pytest suite) — `test_mongo.py` in particular injects demo data directly into the real MongoDB
+> when run, so `conftest.py` explicitly excludes them from test collection (`collect_ignore`) so
+> that `pytest` doesn't accidentally run them.
 
-### הרצת הבדיקות
+### Running the Tests
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
 pytest
 ```
 
-להרצה מפורטת (שם כל בדיקה + תוצאה):
+For verbose output (each test's name + result):
 
 ```bash
 pytest -v
 ```
 
-### מבנה הבדיקות ו-mocking
+### Test Structure and Mocking
 
-| קובץ | מה נבדק |
+| File | What It Covers |
 |------|----------|
-| `conftest.py` | תשתית משותפת: משתני סביבה מדומים ל-`BOT_TOKEN`/`MONGO_URI` (כדי שהייבוא של `bot.py`/`database.py` לא ידרוש `.env` אמיתי), בניית אובייקטי `Update`/`CallbackQuery`/`Message` מדומים (`unittest.mock.MagicMock`/`AsyncMock`), ו-`FakeContext` קליל במקום `ContextTypes.DEFAULT_TYPE`. גם קובע `collect_ignore` עבור `test_geo.py`/`test_mongo.py`. |
-| `test_validation.py` | ולידציית תאריך/שעה: `_extract_hhmm()` (למשל `"18:30"` תקין, `"מחר בבוקר"`/`"עכשיו"` לא מכילים שעה, `"25:00"`/`"12:60"` שעה/דקה לא חוקיות), `_hhmm_to_minutes()`, ו-`_is_valid_ddmm()` (פורמט `DD/MM`). |
-| `test_matching.py` | `distance_km()` (נוסחת Haversine) עם קואורדינטות אמיתיות (תל אביב / בר אילן / מודיעין עילית); סינון מרחק וסינון FLEX דרך `open_search_flex()` עם `get_open_rides_by_role_from_mongo`/`get_user` מוחלפים ב-mock; תרחיש "אין התאמה" (מרחק מדי גדול, זמן מחוץ לחלון, או שניהם). |
-| `test_ride_actions.py` | ביטול שיחה פעילה (`cancel()`), החלפת תפקיד נהג↔נוסע (`set_user_role()`/`get_user()`/`role_button()` עם `users.json` זמני לבדיקה), ומניעת הצטרפות כפולה לאותו טרמפ (`handle_join_ride()` עם `find_ride()`/`update_ride()` מוחלפים ב-mock). |
+| `conftest.py` | Shared infrastructure: dummy environment variables for `BOT_TOKEN`/`MONGO_URI` (so importing `bot.py`/`database.py` doesn't require a real `.env`), builders for mock `Update`/`CallbackQuery`/`Message` objects (`unittest.mock.MagicMock`/`AsyncMock`), and a lightweight `FakeContext` instead of `ContextTypes.DEFAULT_TYPE`. Also sets `collect_ignore` for `test_geo.py`/`test_mongo.py`. |
+| `test_validation.py` | Date/time validation: `_extract_hhmm()` (e.g. `"18:30"` is valid, `"tomorrow morning"`/`"now"` contain no time, `"25:00"`/`"12:60"` invalid hour/minute), `_hhmm_to_minutes()`, and `_is_valid_ddmm()` (`DD/MM` format). |
+| `test_matching.py` | `distance_km()` (Haversine formula) with real-world coordinates (Tel Aviv / Bar-Ilan / Modiin Illit); distance filtering and FLEX filtering via `open_search_flex()` with `get_open_rides_by_role_from_mongo`/`get_user` mocked; a "no match" scenario (distance too large, time outside the window, or both). |
+| `test_ride_actions.py` | Canceling an active conversation (`cancel()`), switching role driver↔passenger (`set_user_role()`/`get_user()`/`role_button()` with a temporary `users.json` for testing), and preventing duplicate joins on the same ride (`handle_join_ride()` with `find_ride()`/`update_ride()` mocked). |
 
-**עקרונות ה-mocking:**
-- אף בדיקה לא פותחת חיבור אמיתי ל-MongoDB — `get_open_rides_by_role_from_mongo`, `find_ride`, ו-`update_ride` מוחלפים ב-`monkeypatch.setattr` בפונקציות/מחלקות מדומות בזיכרון.
-- אף בדיקה לא כותבת ל-`users.json` האמיתי — הבדיקות שנוגעות בקובץ המשתמשים משתמשות בפיקסצ'ר `isolated_users_file` שמפנה את `bot.USERS_FILE` לקובץ זמני (`tmp_path`).
-- קריאות ל-Telegram (`reply_text`, `edit_message_text`, `answer`) מוחלפות ב-`AsyncMock` כדי לבדוק בדיוק אילו הודעות נשלחו, בלי לפתוח חיבור אמיתי לבוט.
+**Mocking principles:**
+- No test opens a real connection to MongoDB — `get_open_rides_by_role_from_mongo`, `find_ride`, and `update_ride`
+  are replaced via `monkeypatch.setattr` with in-memory mock functions/classes.
+- No test writes to the real `users.json` — tests that touch the users file use the `isolated_users_file` fixture,
+  which points `bot.USERS_FILE` at a temporary file (`tmp_path`).
+- Calls to Telegram (`reply_text`, `edit_message_text`, `answer`) are replaced with `AsyncMock` so the exact
+  messages sent can be checked, without opening a real connection to the bot.
 
-### באג שהתגלה ותוקן תוך כדי כתיבת הבדיקות
+### A Bug Found and Fixed While Writing the Tests
 
-בזמן כתיבת בדיקות ל"מניעת הצטרפות כפולה" התגלה שה-handler האמיתי שמחובר לכפתור
-"אני רוצה להצטרף" (`handle_join_ride()`) התייחס למשתנים שלא הוגדרו מעולם (`ride_id`,
-`fallback_message`), כך שכל לחיצה אמיתית על הכפתור הייתה קורסת עם `NameError` — וגם לא
-בדק בפועל אם הטרמפ כבר נלקח לפני שהוא עונה בהצלחה. הלוגיקה הנכונה (בדיקת `status`
-ועדכון אטומי) כבר הייתה קיימת בפונקציה `browse_join()` שמעולם לא חוברה בפועל. התיקון
-מחבר את אותה לוגיקה לתוך `handle_join_ride()`, ומכוסה עכשיו ב-`test_ride_actions.py`.
+While writing tests for "duplicate-join prevention," it was discovered that the real handler wired to the
+"I want to join" button (`handle_join_ride()`) referenced variables that were never defined (`ride_id`,
+`fallback_message`), so every real tap on the button would crash with a `NameError` — and it also never
+actually checked whether the ride had already been taken before replying with success. The correct logic
+(status check and atomic update) already existed in the `browse_join()` function, which was never actually
+wired up. The fix connects that same logic into `handle_join_ride()`, and it is now covered by `test_ride_actions.py`.
