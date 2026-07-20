@@ -82,7 +82,29 @@ pip install -r requirements.txt
 ```
 
 ### Step 3 — Configure environment variables
-Create a `.env` file in the project root (see section 4).
+
+Copy the provided template and fill in real values:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set `BOT_TOKEN` and `MONGO_URI` (see section 4 for details on each variable).
+
+#### Setting up a MongoDB Atlas cluster (for a grader / a fresh test database)
+
+If you don't already have a MongoDB connection string, here's how to get one for free with MongoDB Atlas:
+
+1. **Create an account / sign in** at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas) (a free tier, "M0", is enough for this project).
+2. **Create a cluster** — click "Build a Database", pick the free M0 tier, choose any cloud provider/region, and create it. This takes a couple of minutes to provision.
+3. **Create a database user** — under "Database Access", add a new user with a username and password (autogenerate a strong password if offered). These are the `<user>`/`<password>` values that go into the connection string.
+4. **Allow network access** — under "Network Access", add an IP address. For local development/grading, "Allow Access from Anywhere" (`0.0.0.0/0`) is the simplest option; for anything beyond a class project, scope this down.
+5. **Get the connection string** — click "Connect" on your cluster → "Drivers" → copy the connection string, which looks like:
+   ```
+   mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?appName=Cluster0
+   ```
+   Replace `<user>` and `<password>` with the database user you created in step 3, and paste the result into `.env` as `MONGO_URI`.
+6. **No manual database/collection setup needed** — see the note in section 4 below; the app creates everything it needs automatically the first time it writes data.
 
 ### Step 4 — Run the bot
 
@@ -113,6 +135,19 @@ MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?appName=Cluster
 
 > **Security note:** The `.env` file contains secrets (the bot token and the DB password), so it must never be
 > committed to Git. Make sure it is listed in `.gitignore`.
+
+### MongoDB Database Details
+
+- **Database name is hardcoded:** the app always connects to a database named `TrempiDB` (`client["TrempiDB"]` in
+  `database.py`) regardless of any database name in the `MONGO_URI` path. Any valid Atlas or local connection
+  string works — you don't need to name a specific database in the URI itself.
+- **No manual schema setup needed:** MongoDB creates databases and collections automatically the first time
+  something is written to them. You do not need to manually create `TrempiDB` or any collection before running
+  the bot — connecting a fresh, empty cluster is enough.
+- **In practice, only the `rides` collection is populated:** `database.py` also defines a `users` collection
+  (`users_collection = db["users"]`) and a `save_user_history()` function for a `history` collection, but neither
+  is ever called from `bot.py` — registered-user data is stored locally in `users.json` instead (see section 6).
+  So for this project, the only collection you'll actually see data in is `rides`.
 
 ---
 
@@ -204,7 +239,7 @@ Trempi/
 1. The passenger taps **"What's Available Now"** (or sends `/open`).
 2. If they have search history, the bot shows personalized recommendations:
 
-   > 🤖 Hi Tamar, where are you headed this time? 🚗
+   > 🤖 Hi Alex, where are you headed this time? 🚗
    > `[ 🕒 My last ride — Bar-Ilan University ]`
    > `[ ⭐ Your most popular ride — Bar-Ilan University ]`
    > `[ 🔍 Take me to another destination ]`
@@ -226,7 +261,7 @@ Trempi/
 
 4. The bot performs geographic filtering + time-window filtering, and shows the first match:
 
-   > 🤖 How exciting, Tamar! I found a ride 👇
+   > 🤖 How exciting, Alex! I found a ride 👇
    > 🚗 Origin: Tel Aviv
    > 📍 Destination: Bar-Ilan University
    > ⏰ When: 07:00
