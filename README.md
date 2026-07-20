@@ -59,6 +59,9 @@ python -m venv venv
 # Activate on Windows (PowerShell)
 venv\Scripts\Activate.ps1
 
+# Activate on Windows (Git Bash / WSL-style shells)
+source venv/Scripts/activate
+
 # Activate on Linux / macOS
 source venv/bin/activate
 ```
@@ -105,6 +108,8 @@ If you don't already have a MongoDB connection string, here's how to get one for
    ```
    Replace `<user>` and `<password>` with the database user you created in step 3, and paste the result into `.env` as `MONGO_URI`.
 6. **No manual database/collection setup needed** — see the note in section 4 below; the app creates everything it needs automatically the first time it writes data.
+
+> **Troubleshooting:** if `python bot.py` fails *immediately* with a long traceback mentioning `dns.resolver`, `ConfigurationError`, or `_mongodb._tcp...`, that's a `MONGO_URI` problem, not a Telegram/bot-token problem — `pymongo` resolves the cluster's DNS record as soon as the app starts, before it ever touches Telegram. Double-check the cluster hostname in your connection string and confirm the cluster isn't paused in Atlas. This can look alarming since the error is a raw Python traceback rather than a friendly message, but it's almost always just a typo'd or unreachable `MONGO_URI`.
 
 ### Step 4 — Run the bot
 
