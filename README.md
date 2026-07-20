@@ -362,3 +362,24 @@ While writing tests for "duplicate-join prevention," it was discovered that the 
 actually checked whether the ride had already been taken before replying with success. The correct logic
 (status check and atomic update) already existed in the `browse_join()` function, which was never actually
 wired up. The fix connects that same logic into `handle_join_ride()`, and it is now covered by `test_ride_actions.py`.
+
+---
+
+## 10. Edge Case Handling
+
+The bot is expected to degrade gracefully — reply with a clear message — rather than crash or silently drop
+the user's message when it hits bad input or a flaky dependency. `test_edge_cases.py` covers the following
+scenarios:
+
+| Scenario | How the system responds | Covered by |
+|----------|--------------------------|------------|
+| **Unrecognized/invalid city name** | `geocode_place()` already returns `None` instead of raising when Nominatim finds no match for a place name. Ride creation still completes (the ride is saved without coordinates), and ride search still proceeds (falls back to text-based city-name matching in `open_search_flex()`, or just stores `None` coordinates in `open_search_to()`). No crash, no dead end. | `TestUnrecognizedCityName` |
+| **Invalid time format** (e.g. gibberish instead of `18:30`) | `open_search_time()` validates the input with `_extract_hhmm()` and, if it doesn't look like a time, replies asking for the `HH:MM` format again and stays in the same conversation state (`SEARCH_TIME`) instead of crashing or advancing with bad data. | `TestInvalidTimeFormat` |
+| **No matching rides found** (distance and/or time window) | `open_search_flex()` replies with a friendly "no rides match right now" message and cleanly ends the conversation (`ConversationHandler.END`) instead of raising an error or leaving the user without a reply. | `TestNoMatchingRidesExplicit` (see also the more detailed `test_matching.py::TestNoMatchScenario`) |
+| **External service failure** (geocoding API or MongoDB call raising an exception, e.g. a timeout or a DB outage) | **Originally a real bug:** `ask_when()` (ride creation), `open_search_flex()` (ride search/matching), and `open_search_to()` (search destination step) had no error handling around their `geocode_place()` / MongoDB calls — an exception there would propagate out of the handler uncaught, and the user would simply get no reply at all. Fixed by wrapping those calls in `try/except`: `ask_when()` and `open_search_flex()` now reply with a short Hebrew "temporary glitch, try again" message and end the conversation; `open_search_to()` treats a geocoding exception the same as "place not found" (falls back to `None` coordinates) since the rest of the search flow already handles that case. | `TestExternalServiceFailure` |
+
+**Why this mattered:** before the fix, a MongoDB blip or a Nominatim timeout during ride creation or ride search
+would silently kill the conversation from the user's point of view — no error, no retry prompt, just nothing.
+`TestExternalServiceFailure` was verified to actually fail against the pre-fix code (confirmed by temporarily
+reverting the fix and re-running the suite), so it is a real regression guard, not a test written to match
+already-correct behavior.

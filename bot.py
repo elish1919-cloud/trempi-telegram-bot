@@ -624,37 +624,39 @@ async def ask_when(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     user_data = get_user(telegram_id) or {}
 
-    # שליפת קואורדינטות לשני הקצוות (השיפור המרכזי!)
-    from_coords = await geocode_place(context.user_data.get("ride_from"))
-    to_coords = await geocode_place(context.user_data.get("ride_to"))
+    try:
+        # שליפת קואורדינטות לשני הקצוות (השיפור המרכזי!)
+        # geocode_place() כבר בולעת שגיאות רשת/API ומחזירה None עבור עיר לא מזוהה -
+        # ה-try/except כאן מגן על תקלות בלתי צפויות אחרות (למשל בעיית חיבור ל-MongoDB בשמירה)
+        from_coords = await geocode_place(context.user_data.get("ride_from"))
+        to_coords = await geocode_place(context.user_data.get("ride_to"))
 
-    TEST_MODE = False  # שמי True כשאת רוצה להזרים נתוני טסט, ו-False לעבודה אמיתית בלבד
-    
-    ride = {
-    "telegram_id": int(update.callback_query.from_user.id if update.callback_query else update.effective_user.id),
-    "role": user_data.get("role"),
-    "from": context.user_data.get("ride_from"),
-    "from_coords": from_coords,
-    "to": context.user_data.get("ride_to"),
-    "to_coords": to_coords,
-    "when": when_text,
-    "created_at": datetime.now().isoformat(),
-    "status": "open",
-    "picked_by": None,
-    "picked_at": None,
-    "closed_at": None
-}
+        ride = {
+            "telegram_id": int(update.callback_query.from_user.id if update.callback_query else update.effective_user.id),
+            "role": user_data.get("role"),
+            "from": context.user_data.get("ride_from"),
+            "from_coords": from_coords,
+            "to": context.user_data.get("ride_to"),
+            "to_coords": to_coords,
+            "when": when_text,
+            "created_at": datetime.now().isoformat(),
+            "status": "open",
+            "picked_by": None,
+            "picked_at": None,
+            "closed_at": None,
+        }
 
-    # 1. הגדרת התנאי (נמצא באותו קו של הגדרת ה-ride הקודמת)
-    if TEST_MODE:
-        import test_mongo
-        for fake in test_mongo.fake_rides:
-            add_ride(fake)
         saved = add_ride(ride)
-    else:
-        saved = add_ride(ride)
+    except Exception as e:
+        print(f"[ERROR] Failed to create ride: {e}", flush=True)
+        await update.message.reply_text(
+            "אופס, הייתה תקלה זמנית בשמירת הטרמפ 😕\nנסה שוב בעוד רגע.",
+            reply_markup=main_menu_keyboard(),
+        )
+        context.user_data.pop("ride_from", None)
+        context.user_data.pop("ride_to", None)
+        return ConversationHandler.END
 
-    
     await update.message.reply_text(
         f"קיבלתי.\n"
         f"מספר בקשה: {saved['ride_id']}\n"
@@ -1139,7 +1141,13 @@ async def open_search_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SEARCH_TO
 
     context.user_data["search_to"] = text
-    context.user_data["search_to_coords"] = await geocode_place(text)
+    try:
+        context.user_data["search_to_coords"] = await geocode_place(text)
+    except Exception as e:
+        # אם שירות ה-geocoding נכשל, נמשיך בלי קואורדינטות - open_search_flex() כבר יודע
+        # ליפול חזרה לסינון טקסטואלי לפי שם עיר כשאין קואורדינטות
+        print(f"[ERROR] geocode_place failed for '{text}': {e}", flush=True)
+        context.user_data["search_to_coords"] = None
 
 
     await update.message.reply_text(
@@ -1320,88 +1328,98 @@ async def open_search_flex(update: Update, context: ContextTypes.DEFAULT_TYPE):
     flex_minutes = context.user_data.get("search_flex_minutes")
     ignore_when = (search_time is None)
 
-    # שולפים את כל הנסיעות הפתוחות של התפקיד המבוקש
-    target_role = "passenger" if viewer_role == "driver" else "driver"
-    rides = get_open_rides_by_role_from_mongo(target_role)
+    # שליפת הנסיעות מ-MongoDB וכל הסינון (מרחק + זמן) עלולים להיכשל אם ה-DB לא זמין
+    # או ש-geocode_place נכשל בצורה בלתי צפויה - עוטפים הכל כדי להגיב בהודעה ברורה ולא לקרוס בשקט
+    try:
+        # שולפים את כל הנסיעות הפתוחות של התפקיד המבוקש
+        target_role = "passenger" if viewer_role == "driver" else "driver"
+        rides = get_open_rides_by_role_from_mongo(target_role)
 
-    # 4) 🛠️ סינון לפי מרחק אמיתי - שליפה חיה מה-API במידה וחסר בזיכרון
-    if not context.user_data.get("search_from_coords") and search_from:
-        context.user_data["search_from_coords"] = await geocode_place(search_from)
-    if not context.user_data.get("search_to_coords") and search_to:
-        context.user_data["search_to_coords"] = await geocode_place(search_to)
+        # 4) 🛠️ סינון לפי מרחק אמיתי - שליפה חיה מה-API במידה וחסר בזיכרון
+        if not context.user_data.get("search_from_coords") and search_from:
+            context.user_data["search_from_coords"] = await geocode_place(search_from)
+        if not context.user_data.get("search_to_coords") and search_to:
+            context.user_data["search_to_coords"] = await geocode_place(search_to)
 
-    search_from_coords = context.user_data.get("search_from_coords") or user_data.get("from_coords") or user_data.get("home_coords")
-    search_to_coords = context.user_data.get("search_to_coords") or user_data.get("to_coords")
+        search_from_coords = context.user_data.get("search_from_coords") or user_data.get("from_coords") or user_data.get("home_coords")
+        search_to_coords = context.user_data.get("search_to_coords") or user_data.get("to_coords")
 
-    # אם עדיין חסר, ננסה לבדוק אם יש שדות קואורדינטות בתוך אובייקטים פנימיים ב-DB של המשתמש
-    if not search_from_coords and isinstance(user_data.get("from"), dict):
-        search_from_coords = user_data["from"].get("coords")
-    if not search_to_coords and isinstance(user_data.get("to"), dict):
-        search_to_coords = user_data["to"].get("coords")
+        # אם עדיין חסר, ננסה לבדוק אם יש שדות קואורדינטות בתוך אובייקטים פנימיים ב-DB של המשתמש
+        if not search_from_coords and isinstance(user_data.get("from"), dict):
+            search_from_coords = user_data["from"].get("coords")
+        if not search_to_coords and isinstance(user_data.get("to"), dict):
+            search_to_coords = user_data["to"].get("coords")
 
-    filtered_by_dist = []
+        filtered_by_dist = []
 
-    # אם מצאנו קואורדינטות (בזיכרון או ב-DB) - מבצעים סינון קפדני ומדויק!
-    if search_from_coords and search_to_coords:
-        print(f"[DEBUG DIST] נמצאו קואורדינטות! מוצא: {search_from_coords}, יעד: {search_to_coords}. מריץ סינון גיאוגרפי קשיח.", flush=True)
-        for r in rides:
-            ride_from_c = r.get("from_coords")
-            ride_to_c = r.get("to_coords")
+        # אם מצאנו קואורדינטות (בזיכרון או ב-DB) - מבצעים סינון קפדני ומדויק!
+        if search_from_coords and search_to_coords:
+            print(f"[DEBUG DIST] נמצאו קואורדינטות! מוצא: {search_from_coords}, יעד: {search_to_coords}. מריץ סינון גיאוגרפי קשיח.", flush=True)
+            for r in rides:
+                ride_from_c = r.get("from_coords")
+                ride_to_c = r.get("to_coords")
 
-            if ride_from_c and ride_to_c:
-                try:
-                    d_from = distance_km(tuple(search_from_coords), tuple(ride_from_c))
-                    d_to = distance_km(tuple(search_to_coords), tuple(ride_to_c))
-                    
-                    print(f"[DIST CHECK] Ride {r.get('_id')}: From={d_from:.1f}km, To={d_to:.1f}km", flush=True)
-                    
-                    if d_from <= MAX_PICKUP_DISTANCE_KM and d_to <= MAX_PICKUP_DISTANCE_KM:
-                        filtered_by_dist.append(r)
-                except Exception as e:
-                    print(f"[ERROR DIST] {e}", flush=True)
+                if ride_from_c and ride_to_c:
+                    try:
+                        d_from = distance_km(tuple(search_from_coords), tuple(ride_from_c))
+                        d_to = distance_km(tuple(search_to_coords), tuple(ride_to_c))
+
+                        print(f"[DIST CHECK] Ride {r.get('_id')}: From={d_from:.1f}km, To={d_to:.1f}km", flush=True)
+
+                        if d_from <= MAX_PICKUP_DISTANCE_KM and d_to <= MAX_PICKUP_DISTANCE_KM:
+                            filtered_by_dist.append(r)
+                    except Exception as e:
+                        print(f"[ERROR DIST] {e}", flush=True)
+                        continue
+            rides = filtered_by_dist
+        else:
+            # 🔥 שסתום ביטחון אולטימטיבי: אם הן חסרות לחלוטין גם ב-DB, לא נחסום את החיפוש!
+            # נבצע סינון טקסטואלי זמני כדי שהבוט ימשיך לעבוד ויציג נסיעות רלוונטיות
+            print("[WARN DIST] קואורדינטות חסרות לחלוטין גם ב-DB! עובר לסינון מבוסס שמות ערים.", flush=True)
+            clean_from = str(search_from).strip().lower()
+            clean_to = str(search_to).strip().lower()
+
+            for r in rides:
+                ride_from_str = str(r.get("from") or "").strip().lower()
+                ride_to_str = str(r.get("to") or "").strip().lower()
+                if clean_from in ride_from_str or clean_to in ride_to_str:
+                    filtered_by_dist.append(r)
+
+            # אם גם סינון הטקסט היה מחמיר מדי, נשחרר את הנסיעות כדי שתוכלי לדפדף בטסט
+            if not filtered_by_dist:
+                filtered_by_dist = rides
+            rides = filtered_by_dist
+
+        # 5) סינון לפי זמן
+        if not ignore_when and search_time:
+            search_minutes = _hhmm_to_minutes(search_time)
+            time_filtered = []
+
+            print(f"[DEBUG] מחפש זמן: {search_time} ({search_minutes} דקות)")
+
+            for r in rides:
+                if flex_minutes is None: # גמיש מאוד
+                    time_filtered.append(r)
                     continue
-        rides = filtered_by_dist
-    else:
-        # 🔥 שסתום ביטחון אולטימטיבי: אם הן חסרות לחלוטין גם ב-DB, לא נחסום את החיפוש!
-        # נבצע סינון טקסטואלי זמני כדי שהבוט ימשיך לעבוד ויציג נסיעות רלוונטיות
-        print("[WARN DIST] קואורדינטות חסרות לחלוטין גם ב-DB! עובר לסינון מבוסס שמות ערים.", flush=True)
-        clean_from = str(search_from).strip().lower()
-        clean_to = str(search_to).strip().lower()
-        
-        for r in rides:
-            ride_from_str = str(r.get("from") or "").strip().lower()
-            ride_to_str = str(r.get("to") or "").strip().lower()
-            if clean_from in ride_from_str or clean_to in ride_to_str:
-                filtered_by_dist.append(r)
-        
-        # אם גם סינון הטקסט היה מחמיר מדי, נשחרר את הנסיעות כדי שתוכלי לדפדף בטסט
-        if not filtered_by_dist:
-            filtered_by_dist = rides
-        rides = filtered_by_dist
 
-    # 5) סינון לפי זמן
-    if not ignore_when and search_time:
-        search_minutes = _hhmm_to_minutes(search_time)
-        time_filtered = []
+                ride_when = (r.get("when") or "").strip()
+                ride_minutes = _hhmm_to_minutes(ride_when)
 
-        print(f"[DEBUG] מחפש זמן: {search_time} ({search_minutes} דקות)")
+                if ride_minutes is None or search_minutes is None:
+                    continue
 
-        for r in rides:
-            if flex_minutes is None: # גמיש מאוד
-                time_filtered.append(r)
-                continue
+                diff = abs(ride_minutes - search_minutes)
+                if diff <= flex_minutes:
+                    time_filtered.append(r)
 
-            ride_when = (r.get("when") or "").strip()
-            ride_minutes = _hhmm_to_minutes(ride_when)
-            
-            if ride_minutes is None or search_minutes is None:
-                continue
-
-            diff = abs(ride_minutes - search_minutes)
-            if diff <= flex_minutes:
-                time_filtered.append(r)
-
-        rides = time_filtered
+            rides = time_filtered
+    except Exception as e:
+        print(f"[ERROR] Failed while searching for a matching ride: {e}", flush=True)
+        await query.message.reply_text(
+            "אופס, הייתה תקלה זמנית בחיפוש טרמפים 😕\nנסה שוב בעוד רגע.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return ConversationHandler.END
 
     print(f"[DEBUG] נמצאו {len(rides)} טרמפים סופיים להצגה", flush=True)
 
