@@ -615,10 +615,27 @@ async def ask_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ASK_WHEN
 
 
+_RECOGNIZED_WHEN_PHRASES = {"עכשיו", "מחר בבוקר"}
+
+
+def _is_recognized_when(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", (text or "").strip())
+    if normalized in _RECOGNIZED_WHEN_PHRASES:
+        return True
+    return _extract_hhmm(normalized) is not None
+
+
 async def ask_when(update: Update, context: ContextTypes.DEFAULT_TYPE):
     when_text = (update.message.text or "").strip()
     if not when_text:
         await update.message.reply_text("רק תכתבי מתי.")
+        return ASK_WHEN
+
+    if not _is_recognized_when(when_text):
+        await update.message.reply_text(
+            "כדי שאני אבין אותך הכי טוב שאפשר 🙂\n"
+            "בבקשה כתוב: עכשיו / שעה בפורמט 18:30 / מחר בבוקר"
+        )
         return ASK_WHEN
 
     telegram_id = update.effective_user.id

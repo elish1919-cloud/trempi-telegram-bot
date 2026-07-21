@@ -6,7 +6,7 @@ flaky external dependency - it should always reply with something sensible inste
 of silently dying (which, in a real Telegram bot, means the user just gets no
 response at all).
 
-Covers four scenarios:
+Covers five scenarios:
 1. An unrecognized/invalid city name (geocoding finds nothing -> returns None).
 2. An invalid time format typed by the user during search.
 3. No rides match the search (distance/time window) - already covered in detail by
@@ -14,6 +14,9 @@ Covers four scenarios:
    same "no match" behavior is reachable from this file's scenario-based framing too.
 4. A genuine external-service failure: geocode_place() or a MongoDB call raising an
    exception instead of failing quietly.
+5. Invalid time input during ride creation (ask_when()) - previously accepted any
+   text with zero validation; now restricted to the exact formats its own prompt
+   promises (HH:MM, "עכשיו", "מחר בבוקר"), reprompting on anything else.
 
 Bugs found and fixed while writing these tests (see also README "Edge Case Handling"):
 - ask_when() (ride creation) had no error handling around geocode_place()/add_ride() -
@@ -76,6 +79,69 @@ class TestUnrecognizedCityName:
 
         assert result == bot.SEARCH_TIME
         assert fake_context.user_data["search_to_coords"] is None
+        update.message.reply_text.assert_awaited_once()
+
+
+class TestRideCreationTimeValidation:
+    """ask_when() now validates the ride's 'when' field against the exact formats
+    its own prompt promises (HH:MM / 'עכשיו' / 'מחר בבוקר') instead of accepting
+    any text verbatim, reprompting in the same ASK_WHEN state on anything else."""
+
+    async def test_valid_hhmm_is_accepted(self, driver_user, fake_context, monkeypatch):
+        monkeypatch.setattr(bot, "geocode_place", _async_return((32.0853, 34.7818)))
+        monkeypatch.setattr(bot, "add_ride", lambda ride: {**ride, "ride_id": "abc123"})
+        fake_context.user_data["ride_from"] = "Tel Aviv"
+        fake_context.user_data["ride_to"] = "Bar-Ilan University"
+
+        update = make_message_update("18:30")
+        result = await bot.ask_when(update, fake_context)
+
+        assert result == ConversationHandler.END
+        first_reply = update.message.reply_text.call_args_list[0].args[0]
+        assert "קיבלתי" in first_reply
+
+    async def test_now_phrase_is_accepted(self, driver_user, fake_context, monkeypatch):
+        monkeypatch.setattr(bot, "geocode_place", _async_return((32.0853, 34.7818)))
+        monkeypatch.setattr(bot, "add_ride", lambda ride: {**ride, "ride_id": "abc123"})
+        fake_context.user_data["ride_from"] = "Tel Aviv"
+        fake_context.user_data["ride_to"] = "Bar-Ilan University"
+
+        update = make_message_update("עכשיו")
+        result = await bot.ask_when(update, fake_context)
+
+        assert result == ConversationHandler.END
+        first_reply = update.message.reply_text.call_args_list[0].args[0]
+        assert "קיבלתי" in first_reply
+
+    async def test_tomorrow_morning_phrase_is_accepted(self, driver_user, fake_context, monkeypatch):
+        monkeypatch.setattr(bot, "geocode_place", _async_return((32.0853, 34.7818)))
+        monkeypatch.setattr(bot, "add_ride", lambda ride: {**ride, "ride_id": "abc123"})
+        fake_context.user_data["ride_from"] = "Tel Aviv"
+        fake_context.user_data["ride_to"] = "Bar-Ilan University"
+
+        update = make_message_update("מחר בבוקר")
+        result = await bot.ask_when(update, fake_context)
+
+        assert result == ConversationHandler.END
+        first_reply = update.message.reply_text.call_args_list[0].args[0]
+        assert "קיבלתי" in first_reply
+
+    async def test_gibberish_is_rejected_with_reprompt(self, fake_context):
+        update = make_message_update("בכבכב")
+
+        result = await bot.ask_when(update, fake_context)
+
+        assert result == bot.ASK_WHEN  # stays in the same state, asks again
+        reply = update.message.reply_text.call_args.args[0]
+        assert "עכשיו" in reply and "18:30" in reply
+        update.message.reply_text.assert_awaited_once()
+
+    async def test_empty_input_is_rejected_with_reprompt(self, fake_context):
+        update = make_message_update("   ")
+
+        result = await bot.ask_when(update, fake_context)
+
+        assert result == bot.ASK_WHEN
         update.message.reply_text.assert_awaited_once()
 
 
