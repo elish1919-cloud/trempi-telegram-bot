@@ -354,7 +354,7 @@ From the moment `/start` is sent until the match between driver and passenger is
 
 ## 9. Testing
 
-The project includes an automated `pytest` test suite covering the bot's core logic
+The project includes an automated `pytest` test suite (61 tests) covering the bot's core logic
 (geographic filtering, flexible time window, input validation, role management, and duplicate-join prevention)
 without needing a real connection to MongoDB or Telegram — all network and database calls are replaced
 with mocks using `unittest.mock`.
@@ -385,6 +385,7 @@ pytest -v
 | `test_validation.py` | Date/time validation: `_extract_hhmm()` (e.g. `"18:30"` is valid, `"tomorrow morning"`/`"now"` contain no time, `"25:00"`/`"12:60"` invalid hour/minute), `_hhmm_to_minutes()`, and `_is_valid_ddmm()` (`DD/MM` format). |
 | `test_matching.py` | `distance_km()` (Haversine formula) with real-world coordinates (Tel Aviv / Bar-Ilan / Modiin Illit); distance filtering and FLEX filtering via `open_search_flex()` with `get_open_rides_by_role_from_mongo`/`get_user` mocked; a "no match" scenario (distance too large, time outside the window, or both). |
 | `test_ride_actions.py` | Canceling an active conversation (`cancel()`), switching role driver↔passenger (`set_user_role()`/`get_user()`/`role_button()` with a temporary `users.json` for testing), and preventing duplicate joins on the same ride (`handle_join_ride()` with `find_ride()`/`update_ride()` mocked). |
+| `test_edge_cases.py` | Graceful degradation on bad input/flaky dependencies: unrecognized city names, invalid time format in both the search flow (`open_search_time()`) and ride creation (`ask_when()`), no-matching-rides scenarios, and simulated `geocode_place()`/MongoDB exceptions in `ask_when()`, `open_search_flex()`, and `open_search_to()`. See section 10 for the full breakdown. |
 
 **Mocking principles:**
 - No test opens a real connection to MongoDB — `get_open_rides_by_role_from_mongo`, `find_ride`, and `update_ride`
@@ -414,7 +415,7 @@ scenarios:
 | Scenario | How the system responds | Covered by |
 |----------|--------------------------|------------|
 | **Unrecognized/invalid city name** | `geocode_place()` already returns `None` instead of raising when Nominatim finds no match for a place name. Ride creation still completes (the ride is saved without coordinates), and ride search still proceeds (falls back to text-based city-name matching in `open_search_flex()`, or just stores `None` coordinates in `open_search_to()`). No crash, no dead end. | `TestUnrecognizedCityName` |
-| **Invalid time format** (e.g. gibberish instead of `18:30`) | `open_search_time()` validates the input with `_extract_hhmm()` and, if it doesn't look like a time, replies asking for the `HH:MM` format again and stays in the same conversation state (`SEARCH_TIME`) instead of crashing or advancing with bad data. | `TestInvalidTimeFormat` |
+| **Invalid time format** (e.g. gibberish instead of `18:30`) | Covers both flows that accept a time. **Search flow:** `open_search_time()` validates the input with `_extract_hhmm()` and, if it doesn't look like a time, replies asking for the `HH:MM` format again and stays in the same conversation state (`SEARCH_TIME`) instead of crashing or advancing with bad data. **Ride creation:** `ask_when()` previously accepted any free text verbatim with no validation at all — now checks the input against `_is_recognized_when()` (reusing `_extract_hhmm()` plus the closed set of free-text phrases the prompt itself promises: "now" and "tomorrow morning") and reprompts in the same `ASK_WHEN` state on anything else. | `TestInvalidTimeFormat`, `TestRideCreationTimeValidation` |
 | **No matching rides found** (distance and/or time window) | `open_search_flex()` replies with a friendly "no rides match right now" message and cleanly ends the conversation (`ConversationHandler.END`) instead of raising an error or leaving the user without a reply. | `TestNoMatchingRidesExplicit` (see also the more detailed `test_matching.py::TestNoMatchScenario`) |
 | **External service failure** (geocoding API or MongoDB call raising an exception, e.g. a timeout or a DB outage) | **Originally a real bug:** `ask_when()` (ride creation), `open_search_flex()` (ride search/matching), and `open_search_to()` (search destination step) had no error handling around their `geocode_place()` / MongoDB calls — an exception there would propagate out of the handler uncaught, and the user would simply get no reply at all. Fixed by wrapping those calls in `try/except`: `ask_when()` and `open_search_flex()` now reply with a short Hebrew "temporary glitch, try again" message and end the conversation; `open_search_to()` treats a geocoding exception the same as "place not found" (falls back to `None` coordinates) since the rest of the search flow already handles that case. | `TestExternalServiceFailure` |
 
