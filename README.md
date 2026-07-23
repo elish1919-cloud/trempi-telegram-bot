@@ -207,6 +207,13 @@ Trempi/
 
 ## 7. Usage Examples — A Typical Conversation
 
+### Bot Commands
+
+| Command | What it does |
+|---------|--------------|
+| `/start` | Starts or resumes a conversation with the bot (registration, if not yet registered). |
+| `/cancel` | Cancels whatever conversation is currently in progress (registration, ride creation, or search) and returns to the main menu. |
+
 ### 👤 Driver Flow — Posting a Ride
 
 1. The driver sends `/start`. If not yet registered, the bot shows a **"Start Registration"** button and guides
