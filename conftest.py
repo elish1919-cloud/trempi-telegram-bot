@@ -33,10 +33,11 @@ def isolated_users_file(tmp_path, monkeypatch):
     return str(users_path)
 
 
-def make_user(user_id=111, first_name="נועה"):
+def make_user(user_id=111, first_name="נועה", username=None):
     user = MagicMock()
     user.id = user_id
     user.first_name = first_name
+    user.username = username
     return user
 
 
